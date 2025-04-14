@@ -14,9 +14,9 @@ This directory contains all assignments for CHEP-898. Each assignment is organiz
 
 Folder Structure
 CHEP-898_Rizvi/  
-├── [Data Wrangling Visualization](https://github.com/rizvisbi20/chep989_assignment/tree/main/Data%20Wrangling) /  
-│   ├── [code](https://github.com/rizvisbi20/chep989_assignment/blob/main/Data%20Wrangling/data_wrangling_visualization_rizvi.Rmd)/  
-│   ├── [output md file](https://github.com/rizvisbi20/chep989_assignment/blob/main/Data%20Wrangling/data_wrangling_visualization_rizvi.md)/  
+├── [Data Wrangling Visualization](https://github.com/rizvisbi20/chep898_assignment/tree/main/Data%20Wrangling) /  
+│   ├── [code](https://github.com/rizvisbi20/chep898_assignment/blob/main/Data%20Wrangling/data_wrangling_visualization_rizvi.Rmd)/  
+│   ├── [output md file](https://github.com/rizvisbi20/chep898_assignment/blob/main/Data%20Wrangling/data_wrangling_visualization_rizvi.md)/  
 │ 
 ├── [Git Hub](https://github.com/rizvisbi20/Intro-to-GitHub-Assignment) /  
 ├── [Git Hub Pull up request](https://github.com/rizvisbi20/github_playground)

@@ -23,13 +23,13 @@ CHEP-898_Rizvi/
 ├── [Missing Data](https://github.com/rizvisbi20/chep898_assignment/tree/main/Missing%20Data)/  
 │   ├── [code](https://github.com/rizvisbi20/chep898_assignment/blob/main/Missing%20Data/Missing-Data.Rmd)/  
 │   ├── [output](https://github.com/rizvisbi20/chep898_assignment/blob/main/Missing%20Data/Missing-Data.md)/  
-|── [Independent Analysis - Part 1](https://github.com/rizvisbi20/CHEP-898_Rizvi/tree/main/Missing%20Data)/  
-│   ├── [Readme](https://github.com/rizvisbi20/CHEP-898_Rizvi/blob/main/Missing%20Data/Missing-Data.Rmd)/  
-│   ├── [Render](https://github.com/rizvisbi20/CHEP-898_Rizvi/blob/main/Missing%20Data/Missing-Data.md)/  
-│   ├── [independent analysis](https://github.com/rizvisbi20/CHEP-898_Rizvi/blob/main/Missing%20Data/Missing-Data.md)/ 
-|── [Random Forest](https://github.com/rizvisbi20/CHEP-898_Rizvi/tree/main/Missing%20Data)/  
-│   ├── [code](https://github.com/rizvisbi20/CHEP-898_Rizvi/blob/main/Missing%20Data/Missing-Data.Rmd)/  
-│   ├── [output md file](https://github.com/rizvisbi20/CHEP-898_Rizvi/blob/main/Missing%20Data/Missing-Data.md)/  
+|── [Independent Analysis - Part 1](https://github.com/rizvisbi20/chep898_assignment/tree/main/Independent-Analysis-1)/  
+│   ├── [Readme](https://github.com/rizvisbi20/chep898_assignment/blob/main/Independent-Analysis-1/README.md)/  
+│   ├── [Render](https://github.com/rizvisbi20/chep898_assignment/blob/main/Independent-Analysis-1/Render.md)/  
+│   ├── [independent analysis](https://github.com/rizvisbi20/chep898_assignment/blob/main/Independent-Analysis-1/Independent-Analysis-1_rizvi.md)/ 
+|── [Random Forest]()/  
+│   ├── [code]()/  
+│   ├── [output md file]()/  
 |── [Matching]()/  
 │   ├── [code]()/  
 │   ├── [output md file]()/  

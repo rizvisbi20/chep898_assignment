@@ -1,0 +1,225 @@
+---
+title: "Independent Analysis"
+author: "Syed Jafar Raza Rizvi <br> NSID: cfr954 <br> Student ID: 11344782"
+output:
+  html_document:
+    keep_md: true
+date: "2025-02-11"
+---
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(visdat)
+library(naniar)
+library(mice)
+library(bookdown)
+library(VIM)
+library(sjPlot)
+library(C50)
+library(finalfit)
+library(knitr)
+library(gtsummary)
+library(mlbench)
+library(vip)
+library(rsample)
+library(rpart.plot)
+library(tune)
+library(recipes)
+library(yardstick)
+library(parsnip)
+library(glmnet)
+library(themis)
+library(microbenchmark)
+library(arsenal)
+library(workflows) 
+library(readxl)
+```
+
+Data Wrangling
+
+Load your dataset and examine its structure.
+Perform cleaning tasks, including handling missing data, correcting inconsistencies, and ensuring appropriate data types.
+Prepare the dataset for analysis by creating or transforming variables as necessary.
+
+## Dataset Exploration 
+
+Load and examine **the synthetic cohort of ~100,000 patients**.
+```{r}
+
+data_synt <- read_excel("synthetic_data_stats_competition_2025_final.xlsx")
+
+```
+
+<!-- ```{r} -->
+<!-- # glimpse(data_synt) -->
+
+<!-- ``` -->
+
+
+**Check the structure of the dataset**
+
+```{r}
+
+dim(data_synt)
+
+df_info <- data.frame(
+  Variable = names(data_synt), 
+  Type = sapply(data_synt, class)  # Gets the data type of each variable
+)
+print(df_info, row.names = FALSE)  # Print full output
+
+```
+```{r}
+get_unique_values <- function(df, vars_to_exclude = NULL) {
+  # Initialize results dataframe
+  result <- data.frame(
+    Variable_Name = character(),
+    Unique_Values = character(),
+    Is_Boolean = logical(),
+    # Value_Count = integer(),
+    stringsAsFactors = FALSE
+  )
+  
+  # Get columns to analyze (excluding specified vars)
+  cols_to_analyze <- setdiff(names(df), vars_to_exclude)
+  
+  for (col in cols_to_analyze) {
+    # Get complete unique values (including NA)
+    unique_vals <- unique(df[[col]])
+    na_present <- any(is.na(unique_vals))
+    na_sum<-sum(is.na(df[[col]]))
+    na_sum_per<-((sum(is.na(df[[col]])))/length(df[[col]]))*100
+    
+    # Remove NA for boolean detection
+    clean_vals <- unique_vals[!is.na(unique_vals)]
+    val_count <- length(clean_vals)
+    
+    # Detect boolean variables (0/1 or 1/2 numeric)
+    is_boolean <- if (val_count <= 2 && is.numeric(df[[col]])) {
+      all(clean_vals %in% c(0, 1)) || all(clean_vals %in% c(1, 2))
+    } else {
+      FALSE
+    }
+    
+    # Prepare values for display
+    if (na_present) {
+      display_vals <- c(sort(clean_vals), NA)
+    } else {
+      display_vals <- sort(clean_vals)
+    }
+    
+    # Convert to character representation
+    char_vals <- sapply(display_vals, function(x) {
+      if (is.na(x)) "NA" else as.character(x)
+    })
+    
+    result <- rbind(result, data.frame(
+      Variable_Name = col,
+      Unique_Values = paste(char_vals, collapse = ", "),
+      Is_Boolean = is_boolean,
+      Value_Count = val_count,
+      missing=na_sum,
+      missing_per=na_sum_per,
+      stringsAsFactors = FALSE
+    ))
+  }
+  
+  return(result)
+}
+unique_values <- get_unique_values(data_synt)
+table(unique_values$Is_Boolean)
+ 
+unique_values<- unique_values %>%
+  filter(Variable_Name!="patient_id")
+```
+    138
+
+This is a synthetic cohort of 106747 unique patients with 138 variables. All variables are numeric.  In this health administrative dataset, there are 41,187 observations and 138 variables. Among them 94 are categorical variable, 43 numeric variable.
+
+
+**Missing Data Information**
+
+```{r}
+missing_table <- miss_var_summary(data_synt)
+missing_table
+```
+In this missing data **time_to_outcome_afib_aflutter_new_post** which is **Time from index 12 lead ECG to new onset atrial fibrillation/flutter**. This variable is blank if the patient did not develop the outcome and **time_to_outcome_all_cause_death** which is **Time from index 12 lead ECG to all cause death**. This variable is Blank if the patient did not die. So we can say that those missing is the conditional missing. so we can exclude them from missing variables. 
+
+```{r}
+data_synt1 <- data_synt %>% 
+  select(-c(time_to_outcome_afib_aflutter_new_post,time_to_outcome_all_cause_death))
+
+vis_dat(data_synt1, warn_large_data = FALSE)
+
+# data_synt$time_to_outcome_afib_aflutter_new_post<-NULL
+# data_synt$outcome_all_cause_death<-NULL
+# data_synt$time_to_outcome_all_cause_death<-NULL
+```
+
+From this graph we can say that some specific variables which is the lab variables are missing. 
+
+```{r}
+
+gg_miss_upset(data_synt1, order.by = "freq", nsets = 5,  nintersects = 10)
+gg_miss_upset(data_synt1, order.by = "freq", nsets = 6,  nintersects = 10)
+gg_miss_upset(data_synt1, order.by = "freq", nsets = 7,  nintersects = 10)
+gg_miss_upset(data_synt1, order.by = "freq", nsets = 8,  nintersects = 10)
+gg_miss_upset(data_synt1, order.by = "freq", nsets = 9,  nintersects = 10)
+gg_miss_upset(data_synt1, order.by = "freq", nsets = 10,  nintersects = 10)
+gg_miss_upset(data_synt1, order.by = "freq", nsets = 11,  nintersects = 10)
+```
+We are examining patterns in missing data to identify potential relationships between variables. A notable trend emerges with the laboratory variables, which frequently show missing values together. This pattern of missingness appears meaningful and may reflect genuine data characteristics rather than random omissions. The systematic nature of these missing values suggests there are understandable reasons behind these gaps in the data.
+
+Although the proportion of missing data can influence statistical inference, there are no universally accepted guidelines for the maximum amount of missing data for which multiple imputation (MI) remains beneficial. One study suggests that when over 10% of data are missing, the estimates may become biased [@bennett2001can]. Another paper proposes 5% as a threshold, below which MI is unlikely to provide significant benefits [@schafer1999multiple]. However, limited evidence exists to support these cutoff points. Few studies have explored how bias and efficiency change with increasing levels of missing data, with the most extreme case being 50% missing data, which showed growing inconsistency in effect estimates as missingness increased [@mishra2014comparative] for the small sample. However, when both high missing data and large sample sizes are considered as missing data being at random (MAR) [@lee2012recovery]. In this analysis, I consider missing values with less than 50 percent in this dataset.
+
+let's review filter out all variables with more than 50% missing.
+
+
+```{r}
+data_synt1 <- data_synt1 %>%
+          select(where(~sum(is.na(.x))/length(.x) < 0.50))
+```
+```{r}
+missing_table <- miss_var_summary(data_synt1)
+missing_table
+```
+
+```{r}
+vis_dat(data_synt1, warn_large_data = FALSE)
+
+```
+```{r}
+
+gg_miss_upset(data_synt1, order.by = "freq", nsets = 5,  nintersects = 10)
+gg_miss_upset(data_synt1, order.by = "freq", nsets = 6,  nintersects = 10)
+gg_miss_upset(data_synt1, order.by = "freq", nsets = 7,  nintersects = 10)
+gg_miss_upset(data_synt1, order.by = "freq", nsets = 8,  nintersects = 10)
+gg_miss_upset(data_synt1, order.by = "freq", nsets = 9,  nintersects = 10)
+gg_miss_upset(data_synt1, order.by = "freq", nsets = 10,  nintersects = 10)
+gg_miss_upset(data_synt1, order.by = "freq", nsets = 11,  nintersects = 10)
+```
+
+
+```{r}
+factor_vars <- unique_values %>% 
+  filter(Is_Boolean== TRUE) %>% 
+  pull(Variable_Name)
+data_synt1 <- data_synt1 %>% 
+  mutate(across(any_of(factor_vars), as.factor))
+```
+
+
+**Apply Imputation Methods**
+
+
+We have used Multiple Imputation by Chained Equations (MICE) to impute the missing data.
+
+MICE is a robust method for handling missing data by creating multiple imputed datasets and combining the results. Here we consider 20 imputation and 5 number of iteration
+
+<!-- ```{r} -->
+<!-- imputed_data_mice <- mice(data_synt1, m = 20, seed = 567, maxit=5) -->
+<!-- imputed_data_mice_c<-complete(imputed_data_mice) -->
+<!-- ``` -->
+
+
+

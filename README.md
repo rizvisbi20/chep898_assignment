@@ -18,9 +18,9 @@ CHEP-898_Rizvi/
 │   ├── [code](https://github.com/rizvisbi20/chep898_assignment/blob/main/Data%20Wrangling/data_wrangling_visualization_rizvi.Rmd)/  
 │   ├── [output](https://github.com/rizvisbi20/chep898_assignment/blob/main/Data%20Wrangling/data_wrangling_visualization_rizvi.md)/  
 │ 
-├── [Git Hub](https://github.com/rizvisbi20/Intro-to-GitHub-Assignment) /  
-├── [Git Hub Pull up request](https://github.com/rizvisbi20/github_playground) /
-├── [Missing Data](https://github.com/rizvisbi20/chep898_assignment/tree/main/Missing%20Data) /  
+├── [Git Hub](https://github.com/rizvisbi20/Intro-to-GitHub-Assignment)/  
+├── [Git Hub Pull up request](https://github.com/rizvisbi20/github_playground)/
+├── [Missing Data](https://github.com/rizvisbi20/chep898_assignment/tree/main/Missing%20Data)/  
 │   ├── [code](https://github.com/rizvisbi20/chep898_assignment/blob/main/Missing%20Data/Missing-Data.Rmd)/  
 │   ├── [output](https://github.com/rizvisbi20/chep898_assignment/blob/main/Missing%20Data/Missing-Data.md)/  
 |── [Independent Analysis - Part 1](https://github.com/rizvisbi20/chep898_assignment/tree/main/Independent-Analysis-1)/  

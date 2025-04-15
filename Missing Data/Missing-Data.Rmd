@@ -1,0 +1,627 @@
+---
+title: "Missing Data"
+author: "Syed Jafar Raza Rizvi <br> NSID: cfr954 <br> Student ID: 11344782"
+output:
+  html_document:
+    keep_md: true
+date: "2025-02-11"
+zotero: true
+bibliography: scholar.bib
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(visdat)
+library(naniar)
+library(mice)
+library(bookdown)
+library(VIM)
+```
+# 1. **Dataset Exploration**  
+   - Load the provided health administrative dataset.  
+   - Explore the dataset to identify the extent, patterns, and potential reasons for missing data.  
+   - Summarize findings using tables, charts, or heatmaps to visualize missingness.  
+   
+## - Load the provided health administrative dataset.
+```{r}
+data<-read.csv("can_path_data.csv")
+# data <- data %>% select(ID:HS_GEN_HEALTH, PA_TOTAL_SHORT, PM_BMI_SR, contains("_EVER"), contains("WRK_"))
+```
+
+## - Explore the dataset to identify the extent, patterns, and potential reasons for missing data.
+
+### Explore Dataset 
+
+**Check the structure of the dataset**
+
+```{r}
+
+dim(data)
+
+df_info <- data.frame(
+  Variable = names(data), 
+  Type = sapply(data, class)  # Gets the data type of each variable
+)
+print(df_info, row.names = FALSE)  # Print full output
+```
+
+In this health administrative dataset, there are 41,187 observations and 440 variables. Most of these variables are integers, numeric, or character, which makes sense. However, some variables are being treated as logical. Let’s identify those logical variables.
+
+```{r}
+data %>% 
+  select_if(is_logical) %>% 
+  glimpse()
+```
+
+
+
+We have 9 variables that are logical so let's drop those.
+
+
+```{r}
+### Select specific columns
+logical_cols <- c("DIS_GEN_DS_EVER", "DIS_GEN_SCA_EVER", "DIS_GEN_THALASSEMIA_EVER", "DIS_GEN_CAH_EVER", "DIS_GEN_AIS_EVER", "DIS_GEN_HEMOPHILIA_EVER", "DIS_GEN_CF_EVER", "DIS_GEN_KS_EVER", "DIS_GEN_TS_EVER")
+
+data <- data %>% select(!(logical_cols))
+```
+**Identify Missing Data**
+
+
+```{r}
+missing_table <- miss_var_summary(data)
+missing_table
+```
+Although the proportion of missing data can influence statistical inference, there are no universally accepted guidelines for the maximum amount of missing data for which multiple imputation (MI) remains beneficial. One study suggests that when over 10% of data are missing, the estimates may become biased [@bennett2001can]. Another paper proposes 5% as a threshold, below which MI is unlikely to provide significant benefits [@schafer1999multiple]. However, limited evidence exists to support these cutoff points. Few studies have explored how bias and efficiency change with increasing levels of missing data, with the most extreme case being 50% missing data, which showed growing inconsistency in effect estimates as missingness increased [@mishra2014comparative] for the small sample. However, when both high missing data and large sample sizes are considered as missing data being at random (MAR) [@lee2012recovery]. In this analysis, I consider missing values with less than 50 percent in this dataset.
+
+let's review filter out all variables with more than 50% missing.
+
+
+```{r}
+data <- data %>%
+          select(where(~sum(is.na(.x))/length(.x) < 0.50))
+
+missing_table <- miss_var_summary(data)
+```
+```{r}
+missing_table <- miss_var_summary(data)
+missing_table
+```
+
+### Summarize findings using tables, charts, or heatmaps to visualize missingness. 
+
+```{r}
+gg_miss_upset(data, order.by = "freq", nsets = 10)
+```
+
+Suppose we want to make model where 
+We have identified the outcome and predictors variable. Follwoing are the outcoma and predictor variables.
+
+## Main Outcome of Interest: 
+
+BMI: Body Mass Index (PM_BMI_SR).
+
+## Expouser
+
+PA: Physical Activities: PA_TOTAL_SHORT
+
+SL: Sedentary lifestyle: Total sitting time per week:PA_TOTAL_SIT_TIME 
+
+## Predictors:
+
+### Social and demographic factor:
+
+EB: Participant's ethnic background is Aboriginal (e.g. First Nations, Metis, Inuit).:SDC_EB_ABORIGINAL
+
+AGE: Age of the respondent: SDC_AGE_CALC
+
+GE: Gender: SDC_GENDER
+
+ES: Employment Status: WRK_EMPLOYMENT
+
+GPH: General perception of health: HS_GEN_HEALTH
+
+FI: Food Intake: NUT_VEG_QTY, NUT_FRUITS_QTY
+
+SM: Smoking status: SMK_CIG_STATUS
+
+AC: Alcohol consumption: ALC_CUR_FREQ
+
+### Phychological factor:
+
+DE: Depression: DIS_DEP_EVER
+
+### Choronic health condition 
+
+DIA: Diabetes: DIS_DIAB_TYPE
+
+RE: Region: ADM_STUDY_ID
+```{r}
+data<- data %>%
+  select(ID, PM_BMI_SR, PA_TOTAL_SHORT, PA_TOTAL_SIT_TIME , SDC_EB_ABORIGINAL, SDC_AGE_CALC, SDC_GENDER, WRK_EMPLOYMENT, HS_GEN_HEALTH, NUT_VEG_QTY, NUT_FRUITS_QTY, SMK_CIG_STATUS, ALC_CUR_FREQ, DIS_DEP_EVER, DIS_DIAB_TYPE , ADM_STUDY_ID)
+col<-c("SDC_EB_ABORIGINAL", "SDC_GENDER", "WRK_EMPLOYMENT", "WRK_EMPLOYMENT", "HS_GEN_HEALTH", "SMK_CIG_STATUS", "ALC_CUR_FREQ",
+       "DIS_DEP_EVER", "DIS_DIAB_TYPE", "ADM_STUDY_ID")
+data <- data %>% 
+  dplyr:: mutate_at(col, factor)
+
+```
+
+2. **Apply Imputation Methods**
+   - Select and apply at least three different methods for imputing missing data, such as:
+     - Mean/Median/Mode imputation.
+We have used mean for continuous variable and median for categorical variables. 
+```{r}
+set.seed(123)
+data_mean <- data
+summary(data_mean)
+for(var in names(data_mean)){
+  if (anyNA(data_mean[[var]])) {
+    # print(var)
+    # use median for catagorical variables
+    if (class(data_mean[[var]])=="factor") {
+      # new_var <- paste0(var, "_imput")
+      # data_mean[[new_var]] <- data_mean[[var]]
+      data_mean <- impute_median_at(data_mean, .vars = vars(all_of(var)))
+      # print(var)
+    }
+    #Have use mean for interger or continuous variable
+    else{
+      # new_var <- paste0(var, "_imput")
+      # data_mean[[new_var]] <- data_mean[[var]]
+      data_mean <- impute_mean_at(data_mean, .vars = vars(all_of(var)))
+    }
+    # print(data_shadow[[var]])
+  }
+
+}
+```
+  - K-Nearest Neighbors (KNN) imputation.
+
+KNN imputation replaces missing values based on the values of the nearest neighbors.
+
+Implementation:
+```{r}
+set.seed(456)
+imputed_data_KNN <- kNN(data, k = 3)  # k = number of nearest neighbors
+```
+
+- Multiple Imputation by Chained Equations (MICE).
+
+MICE is a robust method for handling missing data by creating multiple imputed datasets and combining the results. Here we consider 5 imputation (according to theory this sould be more thanb 20 ) and 5 number of iteration
+
+```{r}
+imputed_data_mice <- mice(data, m = 5, seed = 567, maxit=5)
+imputed_data_mice_c<-complete(imputed_data_mice)
+```
+   - Document the implementation process for each method.
+
+3. **Evaluation of Imputation Methods**
+   - Compare the imputed datasets by analyzing:
+     - Changes in key summary statistics (e.g., means, variances).
+     PM_BMI_SR, PA_TOTAL_SHORT, PA_TOTAL_SIT_TIME , SDC_EB_ABORIGINAL, SDC_AGE_CALC, SDC_GENDER, WRK_EMPLOYMENT, HS_GEN_HEALTH, NUT_VEG_QTY, NUT_FRUITS_QTY, SMK_CIG_STATUS, ALC_CUR_FREQ, DIS_DEP_EVER, DIS_DIAB_TYPE , ADM_STUDY_ID
+```{r}
+# Function to calculate mean and standard deviation
+calculate_stats <- function(data) {
+  numeric_stats<-data %>%
+    summarise(across(where(is.numeric), list(mean = ~ mean(., na.rm = TRUE), sd = ~ sd(., na.rm = TRUE))))
+  freq_tables <- data %>%
+    select(where(is.factor)) %>%
+    map(~ table(.x) %>% as.data.frame() %>% rename(Value = .x, Frequency = Freq))
+  list(
+    numeric_stats = numeric_stats,
+    freq_tables = freq_tables
+  )
+}
+
+# Calculate statistics for each dataset
+
+data_selct <- data %>%
+  select(-c(SDC_GENDER, SDC_AGE_CALC, ADM_STUDY_ID))
+original_stats<-calculate_stats(data)
+data_selct <- data_mean %>%
+  select(-c(SDC_GENDER, SDC_AGE_CALC, ADM_STUDY_ID))
+mean_imputed_stats <- calculate_stats(data_selct)
+data_selct <- imputed_data_KNN %>%
+  select(-c(SDC_GENDER, SDC_AGE_CALC, ADM_STUDY_ID))
+KNN_imputed_stats <- calculate_stats(data_selct)
+data_selct <- imputed_data_mice_c %>%
+  select(-c(SDC_GENDER, SDC_AGE_CALC, ADM_STUDY_ID))
+mice_imputed_stats <- calculate_stats(imputed_data_mice_c)
+
+original_stats_num<-data.frame(original_stats$numeric_stats)
+mean_imputed_stats_num<-data.frame(mean_imputed_stats$numeric_stats)
+KNN_imputed_stats_num<-data.frame(KNN_imputed_stats$numeric_stats)
+mice_imputed_stats_num<-data.frame(mice_imputed_stats$numeric_stats)
+
+original_fre <- original_stats$freq_tables %>%
+  bind_rows(.id = "Variable")
+wide_original_fre <- original_fre %>%
+  pivot_wider(names_from = Variable, values_from = Frequency, values_fill = list(Frequency = 0))
+
+mean_fre <- mean_imputed_stats$freq_tables %>%
+  bind_rows(.id = "Variable")
+wide_mean_fre <- mean_fre %>%
+  pivot_wider(names_from = Variable, values_from = Frequency, values_fill = list(Frequency = 0))
+KNN_fre <- KNN_imputed_stats$freq_tables %>%
+  bind_rows(.id = "Variable")
+wide_KNN_fre <- KNN_fre %>%
+  pivot_wider(names_from = Variable, values_from = Frequency, values_fill = list(Frequency = 0))
+
+mice_fre <- mice_imputed_stats$freq_tables %>%
+  bind_rows(.id = "Variable")
+wide_mice_fre <- mice_fre %>%
+  pivot_wider(names_from = Variable, values_from = Frequency, values_fill = list(Frequency = 0))
+
+
+# Combine results into a single table for comparison
+comparable_fre <- bind_rows(
+  wide_original_fre %>% mutate(Dataset = "Original"),
+  wide_mean_fre %>% mutate(Dataset = "Median Imputed"),
+  wide_KNN_fre %>% mutate(Dataset = "KNN Imputed"),
+  wide_mice_fre %>% mutate(Dataset = "mice Imputed")
+)
+
+comparison_table<- bind_rows(
+  original_stats_num %>% mutate(Dataset = "Original"),
+  mean_imputed_stats_num %>% mutate(Dataset = "Mean Imputed"),
+  KNN_imputed_stats_num %>% mutate(Dataset = "KNN Imputed"),
+  mice_imputed_stats_num %>% mutate(Dataset = "mice Imputed")
+)
+x. 
+comparable_fre %>%
+  select(Value, SDC_EB_ABORIGINAL, Dataset) %>%
+  filter(SDC_EB_ABORIGINAL!=0)
+
+
+# Display the comparison table
+print(comparison_table)
+```
+     
+     - The preservation of relationships between variables (e.g., correlations).
+```{r}
+# Select only numeric variables
+# data_com
+original_cor <- data %>%
+  select(PM_BMI_SR,  PA_TOTAL_SHORT, PA_TOTAL_SIT_TIME) %>%
+  na.omit() %>%
+  cor() 
+
+mean_cor <- data_mean %>%
+  select(PM_BMI_SR,  PA_TOTAL_SHORT, PA_TOTAL_SIT_TIME) %>%
+  cor() 
+KNN_cor <- imputed_data_KNN %>%
+  select(PM_BMI_SR,  PA_TOTAL_SHORT, PA_TOTAL_SIT_TIME) %>%
+  cor() 
+mice_cor <- imputed_data_mice_c %>%
+  select(PM_BMI_SR,  PA_TOTAL_SHORT, PA_TOTAL_SIT_TIME) %>%
+  cor() 
+# Compute the correlation matrix
+print ("Correlation matrix for orginal dataset")
+print (original_cor)
+print ("Correlation matrix for mean imputation")
+print(mean_cor)
+print ("Correlation matrix for KNN imputation")
+print(KNN_cor)
+print ("Correlation matrix for MICE imputation" )
+print(mice_cor)
+
+
+
+```
+Cross tabulation for catagorical variables 
+
+```{r}
+library(gmodels)
+var_names<-data %>%
+  select(where(is.factor)) %>%
+  names()
+# variable_pairs <- combn(var_names, 2, simplify = FALSE)
+# 
+# # Create an empty list to store cross-tabulations
+# cross_tabs <- list()
+# 
+# # Loop through each pair and generate cross-tabulations
+# for (pair in variable_pairs) {
+#   var1 <- pair[1]
+#   var2 <- pair[2]
+#   cross_tab <- table(data_shadow[[var1]], data_shadow[[var2]])
+#   cross_tabs[[paste(var1, "vs", var2)]] <- cross_tab
+# }
+# 
+# # Display all cross-tabulations
+# print(cross_tabs)
+
+
+for (i in 1:(length(var_names)-1)) {
+  for (j in (i+1):length(var_names)) {
+    cat("\nCross-tabulation between", var_names[i], "and", var_names[j], "\n", "For Orginal data")
+    CrossTable(data[[var_names[i]]], data[[var_names[j]]], prop.chisq  = FALSE, prop.r = TRUE, prop.c = FALSE, prop.t = FALSE, chisq = TRUE)
+    cat("\nCross-tabulation between", var_names[i], "and", var_names[j], "\n", "For Median Imputation")
+    CrossTable(data_mean[[var_names[i]]], data_mean[[var_names[j]]], prop.chisq  = FALSE, prop.r = TRUE, prop.c = FALSE, prop.t = FALSE, chisq = TRUE)
+    cat("\nCross-tabulation between", var_names[i], "and", var_names[j], "\n", "For KNN Imputation")
+    CrossTable(imputed_data_KNN[[var_names[i]]], imputed_data_KNN[[var_names[j]]], prop.chisq  = FALSE, prop.r = TRUE, prop.c = FALSE, prop.t = FALSE, chisq = TRUE)
+    cat("\nCross-tabulation between", var_names[i], "and", var_names[j], "\n", "For MICE Imputation")
+    CrossTable(imputed_data_mice_c[[var_names[i]]], imputed_data_mice_c[[var_names[j]]], prop.chisq  = FALSE, prop.r = TRUE, prop.c = FALSE, prop.t = FALSE, chisq = TRUE)
+  }
+}
+
+```
+- Visual comparisons of distributions before and after imputation.
+
+```{r}
+# variables<-data %>%
+#   select(where(is.numeric)) %>%
+#   names()
+variables<-c("PM_BMI_SR",  "PA_TOTAL_SHORT" , "PA_TOTAL_SIT_TIME" )
+  # Load the ggplot2 package
+
+# Loop through each variable
+
+ data_rename <- data %>%
+  rename_with(~ paste0(. , "_ori"), -ID)
+ data_mean_rename <- data_mean %>%
+  rename_with(~ paste0(. , "_mean"), -ID)
+ imputed_data_KNN_rename <- imputed_data_KNN %>%
+  rename_with(~ paste0(. , "_KNN"), -ID)
+ imputed_data_mice_c_rename <- imputed_data_mice_c %>%
+  rename_with(~ paste0(. , "_mice"), -ID)
+# 
+# # Load the ggplot2 package
+# library(ggplot2)
+
+# List of variables to plot
+# variables <- c("PA_TOTAL_SHORT", "SDC_GENDER")
+
+# Loop through each variable
+combined_data <- data_rename %>%
+  full_join(data_mean_rename, by = "ID") %>%
+  full_join(imputed_data_KNN_rename, by = "ID") %>%
+  full_join(imputed_data_mice_c_rename, by = "ID")
+# for (var in variables) {
+#   # Create the density plot
+#   density_imp <- ggplot(combined_data) +
+#     geom_density(aes(x = .combined_data[[paste0(var, "_ori")]], colour = "Original")) +
+#     geom_density(aes(x = .combined_data[[paste0(var, "_mean")]], colour = "Mean Imputation")) +
+#     geom_density(aes(x = .combined_data[[paste0(var, "_KNN")]], colour = "KNN Imputation")) +
+#     geom_density(aes(x = .combined_data[[paste0(var, "_mice")]], colour = "MICE Imputation")) +
+#     labs(
+#       title = paste("Density Plot for", var),
+#       x = var,
+#       y = "Density",
+#       colour = "Imputation Method"
+#     ) 
+# 
+#   # Display the plot
+#   print(density_imp)
+# }
+
+density_bmi <- ggplot(combined_data) +
+                geom_density(aes(PM_BMI_SR_ori, colour= "Original")) +
+                geom_density(aes(PM_BMI_SR_mean, colour= "Mean Imputation")) +
+                geom_density(aes(PM_BMI_SR_KNN, colour= "KNN Imputation")) +
+                geom_density(aes(PM_BMI_SR_mice, colour= "MICE Imputation"))+
+  labs(
+    title = "Density Plot for BMI",  # Dynamic title using the variable name
+    # subtitle = "Comparison of Imputation Methods",  # Optional subtitle
+    # caption = "Data source: Your Dataset",  # Optional caption
+    x = "BMI",  # X-axis label
+    y = "Density",  # Y-axis label
+    colour = "Imputation Method"  # Legend title
+  )+
+  theme(
+  plot.title = element_text(size = 16, face = "bold", hjust = 0.5),  # Center and bold the title
+  plot.subtitle = element_text(size = 12, hjust = 0.5),  # Center the subtitle
+  plot.caption = element_text(size = 10, face = "italic")  # Italicize the caption
+)
+        
+plot(density_bmi)
+
+density_short <- ggplot(combined_data) +
+                geom_density(aes(PA_TOTAL_SHORT_ori, colour= "Original")) +
+                geom_density(aes(PA_TOTAL_SHORT_mean, colour= "Mean Imputation")) +
+                geom_density(aes(PA_TOTAL_SHORT_KNN, colour= "KNN Imputation")) +
+                geom_density(aes(PA_TOTAL_SHORT_mice, colour= "MICE Imputation"))+
+    labs(
+    title = "Density Plot for Physical Activity",  # Dynamic title using the variable name
+    # subtitle = "Comparison of Imputation Methods",  # Optional subtitle
+    # caption = "Data source: Your Dataset",  # Optional caption
+    x = "Physical Activity",  # X-axis label
+    y = "Density",  # Y-axis label
+    colour = "Imputation Method"  # Legend title
+  )+
+  theme(
+  plot.title = element_text(size = 16, face = "bold", hjust = 0.5),  # Center and bold the title
+  plot.subtitle = element_text(size = 12, hjust = 0.5),  # Center the subtitle
+  plot.caption = element_text(size = 10, face = "italic")  # Italicize the caption
+)
+plot(density_short)
+
+density_sit <- ggplot(combined_data) +
+                geom_density(aes(PA_TOTAL_SIT_TIME_ori, colour= "Original")) +
+                geom_density(aes(PA_TOTAL_SIT_TIME_mean, colour= "Mean Imputation")) +
+                geom_density(aes(PA_TOTAL_SIT_TIME_KNN, colour= "KNN Imputation")) +
+                geom_density(aes(PA_TOTAL_SIT_TIME_mice, colour= "MICE Imputation")) +
+      labs(
+    title = "Density Plot for sitting time",  # Dynamic title using the variable name
+    # subtitle = "Comparison of Imputation Methods",  # Optional subtitle
+    # caption = "Data source: Your Dataset",  # Optional caption
+    x = "Sitting time",  # X-axis label
+    y = "Density",  # Y-axis label
+    colour = "Imputation Method"  # Legend title
+  )+
+  theme(
+  plot.title = element_text(size = 16, face = "bold", hjust = 0.5),  # Center and bold the title
+  plot.subtitle = element_text(size = 12, hjust = 0.5),  # Center the subtitle
+  plot.caption = element_text(size = 10, face = "italic")  # Italicize the caption
+)
+plot(density_sit)
+```
+
+  
+4. **Analysis of Imputed Data**
+   - Conduct a simple statistical analysis on the imputed datasets to illustrate the downstream effects of different imputation methods.
+```{r}
+data_ori<-data %>%
+  mutate(source="Original")
+data_mean_source<-data_mean %>%
+  mutate(source="Meean")
+imputed_data_KNN_source<-imputed_data_KNN%>%
+  select(-c(ID_imp , PM_BMI_SR_imp, PA_TOTAL_SHORT_imp, PA_TOTAL_SIT_TIME_imp, SDC_EB_ABORIGINAL_imp, SDC_AGE_CALC_imp, SDC_GENDER_imp, WRK_EMPLOYMENT_imp, HS_GEN_HEALTH_imp, NUT_VEG_QTY_imp, NUT_FRUITS_QTY_imp, SMK_CIG_STATUS_imp, ALC_CUR_FREQ_imp, DIS_DEP_EVER_imp, DIS_DIAB_TYPE_imp, ADM_STUDY_ID_imp)) %>%
+  mutate(source="KNN")
+imputed_data_mice_c_source<-imputed_data_mice_c %>%
+  mutate(source="MICE")
+combine_long<-rbind(data_ori,data_mean_source, imputed_data_KNN_source, imputed_data_mice_c_source )
+```
+```{r}
+median_table <- combine_long %>%
+   group_by(source) %>%
+   summarize(
+    BMI = median(PM_BMI_SR, na.rm = TRUE),
+    SHORT = mean(PA_TOTAL_SHORT, na.rm = TRUE),
+    sit_time = median(PA_TOTAL_SIT_TIME, na.rm = TRUE)
+  )
+print(median_table)
+```
+
+   
+   - Discuss how the choice of imputation method impacts the analysis results.
+```{r}
+ library(broom)
+ model_original <- data %>% 
+   with(lm(PM_BMI_SR ~ PA_TOTAL_SHORT + PA_TOTAL_SHORT +
+                  PA_TOTAL_SIT_TIME + SDC_EB_ABORIGINAL +
+                  SDC_AGE_CALC + SDC_GENDER+ 
+                  WRK_EMPLOYMENT + HS_GEN_HEALTH +
+                  NUT_VEG_QTY + NUT_FRUITS_QTY +
+                  SMK_CIG_STATUS + ALC_CUR_FREQ +
+                  DIS_DEP_EVER + DIS_DIAB_TYPE +
+                  ADM_STUDY_ID))
+summary(model_original)
+  model_mean <- data_mean %>% 
+   with(lm(PM_BMI_SR ~ PA_TOTAL_SHORT + PA_TOTAL_SHORT +
+                  PA_TOTAL_SIT_TIME + SDC_EB_ABORIGINAL +
+                  SDC_AGE_CALC + SDC_GENDER+ 
+                  WRK_EMPLOYMENT + HS_GEN_HEALTH +
+                  NUT_VEG_QTY + NUT_FRUITS_QTY +
+                  SMK_CIG_STATUS + ALC_CUR_FREQ +
+                  DIS_DEP_EVER + DIS_DIAB_TYPE +
+                  ADM_STUDY_ID))
+ summary(model_mean)
+ 
+model_KNN <- imputed_data_KNN %>% 
+   with(lm(PM_BMI_SR ~ PA_TOTAL_SHORT + PA_TOTAL_SHORT +
+                  PA_TOTAL_SIT_TIME + SDC_EB_ABORIGINAL +
+                  SDC_AGE_CALC + SDC_GENDER+ 
+                  WRK_EMPLOYMENT + HS_GEN_HEALTH +
+                  NUT_VEG_QTY + NUT_FRUITS_QTY +
+                  SMK_CIG_STATUS + ALC_CUR_FREQ +
+                  DIS_DEP_EVER + DIS_DIAB_TYPE +
+                  ADM_STUDY_ID))
+#model for KNNN imputation
+ summary(model_KNN)
+ 
+ model_mice <- imputed_data_mice_c %>% 
+   with(lm(PM_BMI_SR ~ PA_TOTAL_SHORT + PA_TOTAL_SHORT +
+                  PA_TOTAL_SIT_TIME + SDC_EB_ABORIGINAL +
+                  SDC_AGE_CALC + SDC_GENDER+ 
+                  WRK_EMPLOYMENT + HS_GEN_HEALTH +
+                  NUT_VEG_QTY + NUT_FRUITS_QTY +
+                  SMK_CIG_STATUS + ALC_CUR_FREQ +
+                  DIS_DEP_EVER + DIS_DIAB_TYPE +
+                  ADM_STUDY_ID))
+#model for KNNN imputation
+ summary(model_mice)
+```
+
+Original Dataset (No Imputation)
+
+Observations Deleted: 22,489 observations were deleted due to missingness, reducing the sample size to 18,666.
+Residual Standard Error: 5.684
+R-squared: 0.1024
+Key Findings:
+Significant predictors include PA_TOTAL_SHORT, PA_TOTAL_SIT_TIME, SDC_AGE_CALC, SDC_GENDER, HS_GEN_HEALTH, SMK_CIG_STATUS, ALC_CUR_FREQ, DIS_DIAB_TYPE, and ADM_STUDY_ID at 5 percent level of significant. 
+The effect sizes and significance levels are based on the complete cases, which may introduce bias if the missing data are not MCAR.
+
+Mean Imputation
+
+Observations Deleted: None (all missing values were imputed).
+Residual Standard Error: 5.002
+R-squared: 0.06947
+Key Findings:
+The residual standard error is lower, and the R-squared is slightly lower compared to the original dataset.
+Some predictors that were significant in the original dataset (e.g., SDC_EB_ABORIGINAL, NUT_FRUITS_QTY) became less significant or insignificant.
+The effect sizes for some predictors (e.g., SDC_GENDER, HS_GEN_HEALTH, DIS_DIAB_TYPE) are smaller than those in the original dataset.
+Mean imputation tends to reduce variability and may underestimate the true effect sizes.
+
+KNN Imputation
+
+Observations Deleted: None (all missing values were imputed).
+Residual Standard Error: 5.51
+R-squared: 0.1003
+Key Findings:
+The residual standard error and R-squared are closer to the original dataset compared to mean imputation.
+Some predictors (e.g., SDC_EB_ABORIGINAL, NUT_VEG_QTY, NUT_FRUITS_QTY) show different significance levels compared to the original dataset.
+The effect sizes for some predictors (e.g., SDC_GENDER, HS_GEN_HEALTH, DIS_DIAB_TYPE) are closer to the original dataset compared to mean imputation.
+KNN imputation preserves more of the data structure and variability than mean imputation.
+
+MICE Imputation
+
+Observations Deleted: None (all missing values were imputed).
+Residual Standard Error: 5.855
+R-squared: 0.1094
+Key Findings:
+The residual standard error is slightly higher, and the R-squared is slightly higher compared to the original dataset.
+Some predictors (e.g., SDC_EB_ABORIGINAL, NUT_FRUITS_QTY, DIS_DEP_EVER) show different significance levels compared to the original dataset.
+The effect sizes for some predictors (e.g., SDC_GENDER, HS_GEN_HEALTH, DIS_DIAB_TYPE) are closer to the original dataset compared to mean and KNN imputation.
+MICE imputation accounts for the uncertainty in imputed values and typically produces more reliable estimates compared to mean and KNN imputation.
+
+5. **Interpretation and Reporting**
+   - Provide a detailed comparison of the methods, discussing their strengths, weaknesses, and suitability for the dataset.
+   
+   
+   # Mean/Median/Mode Imputation
+
+Method: Replace missing values with the mean, median, or mode of the observed data.
+Impact:
+Advantages:
+Simple and easy to implement.
+Preserves the sample size.
+Disadvantages:
+Reduces variability in the data, leading to underestimation of variance.
+Can distort relationships between variables (e.g., correlations, regression coefficients).
+Ignores the uncertainty of the imputed values.
+Use Case: Suitable for preliminary analysis or when the proportion of missing data is very small.
+
+# k-Nearest Neighbors (KNN) Imputation
+
+Method: Replace missing values with the average (or weighted average) of the k-nearest neighbors in the feature space.
+Advantages:
+Captures local patterns in the data.
+Preserves relationships between variables better than mean imputation.
+Disadvantages:
+Computationally expensive for large datasets.
+Sensitive to the choice of k and the distance metric.
+May introduce bias if the data has a complex structure.
+Use Case: Useful for datasets with complex relationships and moderate missingness.
+
+# Multiple Imputation by Chained Equations (MICE)
+
+Method: Generate multiple imputed datasets by modeling each variable with missing data conditional on other variables.
+Impact:
+Advantages:
+Accounts for uncertainty in the imputed values by generating multiple datasets.
+Preserves relationships between variables and the variability of the data.
+Flexible and can handle different types of variables (continuous, categorical).
+Disadvantages:
+Computationally intensive.
+Requires careful specification of the imputation model.
+Use Case: Ideal for datasets with complex missing data mechanisms and when unbiased estimates of uncertainty are needed.
+
+   - Reflect on the challenges of handling missing data in health research.
+
+Bias: The analysis may produce biased estimates if missingness is not random (MAR or MNAR).
+Reduced Statistical Power: Missing data reduces the adequate sample size, leading to less precise estimates and lower power to detect significant effects.
+Loss of Generalizability: If the missing data pattern is related to specific subgroups, the results may not be generalizable to the entire population.
+Challenge: Ensuring that the analysis remains valid and generalizable despite missing data.
+
+## References

@@ -1,0 +1,125 @@
+---
+title: "Missing Data"
+author: "Syed Jafar Raza Rizvi <br> NSID: cfr954 <br> Student ID: 11344782"
+output:
+  html_document:
+    keep_md: true
+date: "2025-02-11"
+zotero: true
+bibliography: scholar.bib
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(visdat)
+library(naniar)
+library(mice)
+library(bookdown)
+library(VIM)
+```
+# 1. **Dataset Exploration**  
+   - Load the provided health administrative dataset.  
+   - Explore the dataset to identify the extent, patterns, and potential reasons for missing data.  
+   - Summarize findings using tables, charts, or heatmaps to visualize missingness.  
+   
+## - Load the provided health administrative dataset.
+```{r}
+data<-read.csv("can_path_data.csv")
+data <- data %>% select(ID:HS_GEN_HEALTH, PA_TOTAL_SHORT, PM_BMI_SR, contains("_EVER"), contains("WRK_"))
+```
+
+## - Explore the dataset to identify the extent, patterns, and potential reasons for missing data.
+
+### Explore Dataset 
+
+**Check the structure of the dataset**
+
+```{r}
+
+dim(data)
+
+df_info <- data.frame(
+  Variable = names(data), 
+  Type = sapply(data, class)  # Gets the data type of each variable
+)
+print(df_info, row.names = FALSE)  # Print full output
+```
+
+In this health administrative dataset, there are 41,187 observations and 440 variables. Most of these variables are integers, numeric, or character, which makes sense. However, some variables are being treated as logical. Let’s identify those logical variables.
+
+```{r}
+data %>% 
+  select_if(is_logical) %>% 
+  glimpse()
+```
+
+
+We have 9 variables that are logical so let's drop those.
+
+
+```{r}
+### Select specific columns
+logical_cols <- c("DIS_GEN_DS_EVER", "DIS_GEN_SCA_EVER", "DIS_GEN_THALASSEMIA_EVER", "DIS_GEN_CAH_EVER", "DIS_GEN_AIS_EVER", "DIS_GEN_HEMOPHILIA_EVER", "DIS_GEN_CF_EVER", "DIS_GEN_KS_EVER", "DIS_GEN_TS_EVER")
+
+data <- data %>% select(!(logical_cols))
+```
+**Identify Missing Data**
+
+
+```{r}
+missing_table <- miss_var_summary(data)
+missing_table
+```
+Although the proportion of missing data can influence statistical inference, there are no universally accepted guidelines for the maximum amount of missing data for which multiple imputation (MI) remains beneficial. One study suggests that when over 10% of data are missing, the estimates may become biased [@bennett2001can]. Another paper proposes 5% as a threshold, below which MI is unlikely to provide significant benefits [@schafer1999multiple]. However, limited evidence exists to support these cutoff points. Few studies have explored how bias and efficiency change with increasing levels of missing data, with the most extreme case being 50% missing data, which showed growing inconsistency in effect estimates as missingness increased [@mishra2014comparative] for the small sample. However, when both high missing data and large sample sizes are considered as missing data being at random (MAR) [@lee2012recovery]. In this analysis, I consider missing values with less than 50 percent in this dataset.
+
+let's review filter out all variables with more than 20% missin for make this analysis easy.
+
+
+```{r}
+data <- data %>%
+          select(where(~sum(is.na(.x))/length(.x) < 0.20))
+
+missing_table <- miss_var_summary(data)
+```
+```{r}
+missing_table <- miss_var_summary(data)
+missing_table
+```
+
+### Summarize findings using tables, charts, or heatmaps to visualize missingness. 
+
+```{r}
+gg_miss_upset(data, order.by = "freq", nsets = 10)
+```
+
+2. **Apply Imputation Methods**  
+   - Select and apply at least three different methods for imputing missing data, such as:  
+     - Mean/Median/Mode imputation.
+Lets apply mice function to impute missing data by mean imputation. Here, we have select 1 imputation and 1 iteration. 
+```{r}
+set.seed(123)
+data_imp_mean <- mice(data, method = "mean", m = 1, maxit = 1)
+```
+     
+     - K-Nearest Neighbors (KNN) imputation. 
+
+KNN imputation replaces missing values based on the values of the nearest neighbors.
+
+Implementation:
+```{r}
+set.seed(456)
+imputed_data_KNN <- kNN(data, k = 3)  # k = number of nearest neighbors
+```
+     
+     - Multiple Imputation by Chained Equations (MICE). 
+     MICE is a robust method for handling missing data by creating multiple imputed datasets and combining the results. Here we consider 5 imputation (according to theory this sould be more thanb 20 ) and 5 number of iteration
+```{r}
+imputed_data_mice <- mice(data, m = 5, seed = 567, maxit=5)
+```
+     
+   - Document the implementation process for each method. 
+   
+   
+
+## References

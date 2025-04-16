@@ -1,0 +1,509 @@
+---
+title: "Random Forest"
+author: "Syed Jafar Raza Rizvi <br> NSID: cfr954 <br> Student ID: 11344782"
+output:
+  html_document:
+    keep_md: true
+date: "2025-02-11"
+---
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(visdat)
+library(naniar)
+library(mice)
+library(bookdown)
+library(VIM)
+library(sjPlot)
+library(C50)
+library(finalfit)
+library(knitr)
+library(gtsummary)
+library(mlbench)
+library(vip)
+library(rsample)
+library(rpart.plot)
+library(tune)
+library(recipes)
+library(yardstick)
+library(parsnip)
+library(glmnet)
+library(themis)
+library(microbenchmark)
+library(arsenal)
+library(workflows) 
+library(dials)
+```
+
+1. **Dataset Exploration**  
+   - Load and examine the **Can Path Student Dataset**. 
+```{r}
+data<-read.csv("mice_all_imp.csv")
+data <- data %>% mutate_at(3, factor)
+data <- data %>% mutate_at(5:6, factor)
+data <- data %>% mutate_at(8:12, factor)
+data <- data %>% mutate_at(15:81, factor)
+data <- data %>% mutate_at(83:93, factor)
+
+data$ID <- NULL
+data$ADM_STUDY_ID <- NULL
+```
+   - Conduct an initial exploratory data analysis (EDA) to understand key features and relationships.  
+We are going to use Diabatic as a predictor in the model. 
+
+Diabctic (DIS_DIAB_EVER)  has 3 catagories:
+0 - "Never had diabetes"
+1-  "Ever had diabetes"
+2 - "Presumed-Never had diabetes"
+
+let see the frequency distribution of diabetic disease
+
+```{r}
+table(data$DIS_DIAB_EVER)
+```
+Let’s recode the variable DIS_DIAB_EVER into Ever had diabetes as Yes (1) , and Never had diabetes and presumed-Never had diabetes as No (0).
+```{r}
+data <- data %>%
+	mutate(diabetes = case_when(
+		DIS_DIAB_EVER == 0 ~ 0,
+		DIS_DIAB_EVER == 1 ~ 1,
+		DIS_DIAB_EVER == 2 ~ 0)) %>%
+		mutate(diabetes = as.factor(diabetes))
+table(data$DIS_DIAB_EVER, data$diabetes)
+data$DIS_DIAB_EVER <- NULL
+```
+```{r}
+table <- tableby(~diabetes   
+                            , data=data)
+knitr::kable(summary(table), caption = "Table 1 : Frequency distribution", booktabs = TRUE, "pipe")
+
+ggplot(data) + 
+    geom_bar(aes(diabetes))
+```
+
+
+From the table and graph we can say that, 7.6% of the study population has diabetes (1), while the majority (92.4%) does not (0). So we can say that the prevalence of diabetes is low in the dataset. we will use Synthetic Minority Over-sampling Technique (SMOTE) to incease diabetes cases.
+
+   - Handle missing data, outliers, or inconsistencies if necessary.  
+   
+The dataset has been cleaned by using Multivariate Imputation by Chained Equations method.
+<!-- We have selected following variable for our analysis  -->
+
+<!-- SDC_AGE_CALC: Participant's age at questionnaire completion, calculated from birth date and date of questionnaire completion. -->
+<!-- SDC_EDU_LEVEL: Highest level of education completed by the participant. -->
+<!-- PM_BMI_SR: Body Mass Index. -->
+<!-- WRK_FULL_TIME: Full-time employed. -->
+<!-- SMK_CIG_EVER: Ever smoked 100 cigarettes or more. -->
+<!-- SDC_INCOME: Household income before taxes -->
+<!-- PA_TOTAL_SHORT: Total physical activity MET-minutes/week -->
+<!-- HS_ROUTINE_VISIT_EVER: Ever had routine medical check-up. -->
+<!-- PSE_ADULT_WRK_DURATION: Duration of passive smoking exposure during adulthood at work. -->
+<!-- DIS_RESP_SLEEP_APNEA_EVER: Occurrence of sleep apnea. -->
+<!-- SDC_EDU_LEVEL_AGE: Age highest level education completed. -->
+<!-- SDC_GENDER: Gender of the participant. -->
+
+<!-- ```{r} -->
+<!-- data_small <- data %>%  -->
+<!-- select (diabetes, SDC_AGE_CALC, SDC_EDU_LEVEL, PM_BMI_SR, WRK_FULL_TIME, SMK_CIG_EVER, SDC_INCOME, PA_TOTAL_SHORT, HS_ROUTINE_VISIT_EVER, PSE_ADULT_WRK_DURATION, DIS_RESP_SLEEP_APNEA_EVER, SDC_EDU_LEVEL_AGE, SDC_GENDER) -->
+<!-- ``` -->
+
+
+2. **Baseline Random Forest Model**  
+   - Split the dataset into training and testing sets.  
+```{r}
+set.seed(786)
+
+
+cv_split <- initial_split(data, 
+                            strata = diabetes, 
+                            prop = 0.70)
+```
+We have split the main dataset into two parts: the training dataset, where we put 70 percent of all observations, and the test dataset, where we put 30 percent. 
+```{r}
+train_data <- training(cv_split)
+
+
+test_data  <- testing(cv_split)
+
+```
+### Set the number of cores on your computer
+```{r}
+cores <- parallel::detectCores()
+cores
+```
+- Implement a baseline Random Forest model with default parameters.  
+```{r}
+rf_model_base <- rand_forest() %>% 
+              set_engine("ranger", num.threads = cores) %>% 
+              set_mode("classification")
+```
+## recipe bulding
+
+```{r}
+diabetes_recipe_base <- 
+  recipe(diabetes ~ ., data = train_data) %>% 
+  step_smotenc(diabetes, over_ratio = 0.9) %>%
+  step_zv(all_predictors()) 
+```
+
+## workflow building
+```{r}
+library(recipes)
+diabetes_workflow_base <- 
+        workflow() %>% 
+        add_model(rf_model_base) %>% 
+        add_recipe(diabetes_recipe_base)
+
+diabetes_workflow_base
+```
+## Fit the model 
+
+```{r}
+set.seed(100)
+
+diabetes_workflow_fit_base <- diabetes_workflow_base %>% 
+  fit(train_data)
+
+diabetes_workflow_fit_base
+summary(diabetes_workflow_fit_base)
+```
+
+## Test the trained model
+
+
+```{r}
+pred_diabetes_base_class <- predict(diabetes_workflow_fit_base,
+                      new_data = test_data,
+                      type = "class")
+table(pred_diabetes_base_class$.pred_class)
+```
+```{r}
+pred_diabetes_base_prob <- predict(diabetes_workflow_fit_base,
+                      new_data = test_data,
+                      type = "prob")
+head(pred_diabetes_base_prob)
+```
+```{r}
+diabetes_results_base <- test_data %>%
+  select(diabetes) %>%
+  bind_cols(pred_diabetes_base_class, pred_diabetes_base_prob)
+
+head(diabetes_results_base)
+```
+   - Evaluate the model using appropriate metrics (e.g., accuracy, precision, recall, F1-score, or ROC-AUC).  
+   
+## Confusion Matrix
+```{r}
+conf_mat(diabetes_results_base, truth = diabetes,
+         estimate = .pred_class)
+```
+## Accuracy
+
+```{r}
+accuracy_Based<-accuracy(diabetes_results_base, truth = diabetes,
+         estimate = .pred_class)
+accuracy_Based
+```
+## Sensitivity
+
+```{r}
+sensitivity_based<-sens(diabetes_results_base, truth = diabetes,
+         estimate = .pred_class)
+sensitivity_based
+```
+
+## Specificity
+
+```{r}
+specificity_based<-spec(diabetes_results_base, truth = diabetes,
+         estimate = .pred_class)
+specificity_based
+```
+
+## F1 Score
+
+```{r}
+f1_score_based<-f_meas(diabetes_results_base, truth = diabetes,
+         estimate = .pred_class)
+f1_score_based
+```
+#### Precision
+
+```{r}
+precision_based  <- precision(diabetes_results_base, truth = diabetes,
+         estimate = .pred_class) 
+
+precision_based
+```
+
+## ROC Curve
+
+```{r}
+roc_auc(diabetes_results_base,
+        truth = diabetes,
+        .pred_0)
+
+roc_curve <- diabetes_results_base %>%
+  roc_curve(truth = diabetes, .pred_0) %>%
+  autoplot()
+
+plot(roc_curve)
+```
+The ROC-AUC score of 0.7556 indicates that the model has moderate to good discriminative ability in distinguishing between positive and negative cases. It has a 75.56% chance of correctly ranking a positive instance higher than a negative one.
+
+3. **Hyperparameter Tuning**  
+
+# Build the model object 
+```{r}
+rf_model_tune <- rand_forest(mtry = tune(), min_n = tune(), trees = 100) %>% 
+              set_engine("ranger", num.threads = cores) %>% 
+              set_mode("classification")
+```
+
+# Recipe
+
+```{r}
+diabetes_recipe_tune <- 
+  recipe(diabetes ~ ., data = train_data) %>% 
+   step_smotenc(diabetes, over_ratio = 0.9) %>%
+  step_zv(all_predictors()) ### Remove columns from the data when the training set data have a single value. Zero variance predictor
+```
+
+# Create a workflow
+
+```{r}
+diabetes_workflow_tune <- 
+        workflow() %>% 
+        add_model(rf_model_tune) %>% 
+        add_recipe(diabetes_recipe_tune)
+
+diabetes_workflow_tune
+```
+
+## fit model
+
+```{r}
+set.seed(100)
+
+folds <- vfold_cv(train_data, v = 10) 
+
+rf_grid <- grid_regular(
+              mtry(range = c(1, 30)),
+              min_n(range = c(5, 50)),
+              levels = 5  
+            )
+
+rf_grid
+```
+
+```{r}
+diabetes_fit_tune <- tune_grid(
+                diabetes_workflow_tune,
+                resamples = folds,
+                grid = rf_grid, 
+                control = control_resamples(save_pred = TRUE, 
+                                                  verbose = FALSE))
+
+diabetes_fit_tune
+```
+Evaluatinng the result
+
+
+```{r}
+diabetes_fit_tune %>%
+  collect_metrics() %>%
+  filter(.metric == "accuracy") %>%
+  select(mean, min_n, mtry) %>%
+  pivot_longer(min_n:mtry,
+    values_to = "value",
+    names_to = "parameter"
+  ) %>%
+  ggplot(aes(value, mean, color = parameter)) +
+  geom_point(show.legend = FALSE) +
+  facet_wrap(~parameter, scales = "free_x") +
+  labs(x = NULL, y = "Accuracy")
+
+diabetes_fit_tune %>%
+  collect_metrics() %>%
+  filter(.metric == "accuracy") %>%
+  mutate(min_n = factor(min_n)) %>%
+  ggplot(aes(mtry, mean, color = min_n)) +
+  geom_line(alpha = 0.5, size = 1.5) +
+  geom_point() +
+  labs(y = "Accuracy")
+```
+from the plot, the best tuned model have mtry around 8 and min_n of around 5 and trees of 100.
+# Collect the results
+```{r}
+rf_best_tune <- 
+  diabetes_fit_tune %>% 
+  select_best(metric = "accuracy")
+
+rf_best_tune
+```
+The best model is Preprocessor1_Model02 with mtry 8, min_n 5 and trees 100.
+
+### Finalizing the best model 
+
+```{r}
+final_rf_model <- finalize_model(rf_model_tune, rf_best_tune)
+```
+
+### Creating final workflow
+ 
+```{r}
+rf_workflow_final <- workflow() %>% 
+  add_model(final_rf_model) %>% 
+  add_recipe(diabetes_recipe_tune) 
+```
+
+### Training the final Model 
+
+```{r}
+rf_workflow_final_fit <- rf_workflow_final %>% 
+  fit(train_data)
+
+rf_workflow_final_fit
+```
+
+### Prediciting test data 
+
+#### Class Prediction
+
+```{r}
+final_model_predict <- predict(rf_workflow_final_fit,new_data = test_data) %>% 
+  bind_cols(test_data)
+
+final_model_predict<- final_model_predict  %>%
+  select(.pred_class, diabetes)
+
+final_model_predict %>% 
+  head()
+```
+
+
+
+## Test the trained model
+
+
+```{r}
+pred_diabetes_base_class <- predict(final_model_predict,
+                      new_data = test_data,
+                      type = "class")
+table(pred_diabetes_base_class$.pred_class)
+```
+```{r}
+pred_diabetes_base_prob <- predict(final_model_predict,
+                      new_data = test_data,
+                      type = "prob")
+head(pred_diabetes_base_prob)
+```
+```{r}
+diabetes_results_base <- test_data %>%
+  select(diabetes) %>%
+  bind_cols(pred_diabetes_base_class, pred_diabetes_base_prob)
+
+head(diabetes_results_base)
+```
+   - Evaluate the model using appropriate metrics (e.g., accuracy, precision, recall, F1-score, or ROC-AUC).  
+   
+## Confusion Matrix
+```{r}
+conf_mat(final_model_predict, truth = diabetes,
+         estimate = .pred_class)
+```
+## Accuracy
+
+```{r}
+accuracy_tuned<-accuracy(final_model_predict, truth = diabetes,
+         estimate = .pred_class)
+accuracy_tuned
+```
+## Sensitivity
+
+```{r}
+sensitivity_tuned<-sens(final_model_predict, truth = diabetes,
+         estimate = .pred_class)
+sensitivity_tuned
+```
+
+## Specificity
+
+```{r}
+specificity_tuned<-spec(final_model_predict, truth = diabetes,
+         estimate = .pred_class)
+specificity_tuned
+```
+
+## F1 Score
+
+```{r}
+f1_score_tuned<-f_meas(final_model_predict, truth = diabetes,
+         estimate = .pred_class)
+f1_score_tuned
+```
+#### Precision
+
+```{r}
+precision_tuned  <- precision(final_model_predict, truth = diabetes,
+         estimate = .pred_class) 
+
+precision_tuned
+```
+#### Combine metrics into a data frame
+
+```{r}
+tuned_metrics <- data.frame(
+  accuracy_tuned = accuracy_tuned$.estimate,
+  sensitivity_tuned = sensitivity_tuned$.estimate,
+  specificity_tuned = specificity_tuned$.estimate,
+  precision_tuned= precision_tuned$.estimate,
+  f_score_tuned = f1_score_tuned$.estimate
+)
+
+tuned_metrics %>% 
+  head()
+```
+
+#### Changing shape of dataframe 
+
+```{r}
+tuned_metrics_long <- tuned_metrics %>% 
+  pivot_longer(cols = accuracy_tuned:f_score_tuned,
+               names_to = "metrics",
+               values_to = "estimates")
+
+tuned_metrics_long
+```
+
+
+
+
+## ROC Curve
+
+```{r}
+roc_auc(final_model_predict,
+        truth = diabetes,
+        .pred_class)
+
+roc_curve <- final_model_predict %>%
+  roc_curve(truth = diabetes, .pred_class) %>%
+  autoplot()
+
+plot(roc_curve)
+```
+
+
+
+
+4. **Model Comparisons**  
+   - Compare the tuned Random Forest model against:  
+     - The baseline Random Forest model.  
+   - Analyze differences in performance using quantitative metrics and discuss possible reasons for the results.  
+
+5. **Feature Importance Analysis**  
+   - Extract and interpret feature importance scores from the Random Forest model.  
+   - Visualize the top contributing features and discuss their relevance to the dataset.  
+   
+   
+   

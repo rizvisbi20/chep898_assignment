@@ -1,0 +1,261 @@
+---
+title: "Matching Methods"
+author: "Syed Jafar Raza Rizvi <br> NSID: cfr954 <br> Student ID: 11344782"
+output:
+  html_document:
+    keep_md: true
+date: "2025-02-11"
+---
+
+```{r setup, message = FALSE, warning = FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(adjustedCurves)
+library(boot)
+library(broom)
+library(geepack)
+library(here)
+library(MatchIt)
+library(tableone)
+library(sjPlot)
+library(survey)
+library(episensr) 
+library(epitools)
+library(gtsummary)
+library(cobalt)
+library(cowplot)
+library(geepack)
+library(WeightIt)
+```
+
+```{r}
+data<-read.csv("mice_all_imp.csv")
+```
+
+```{r}
+data <- data %>% mutate_at(3, factor)
+data <- data %>% mutate_at(5:6, factor)
+data <- data %>% mutate_at(8:12, factor)
+data <- data %>% mutate_at(15:81, factor)
+data <- data %>% mutate_at(83:93, factor)
+```
+
+```{r}
+summary(data$PM_BMI_SR)
+```
+
+```{r}
+data <- data %>%
+	mutate(diabetes = case_when(
+		DIS_DIAB_EVER == 0 ~ 0,
+		DIS_DIAB_EVER == 1 ~ 1,
+		DIS_DIAB_EVER == 2 ~ 0)) %>%
+		mutate(diabetes = as.factor(diabetes))
+
+table(data$DIS_DIAB_EVER, data$diabetes)
+```
+
+```{r}
+data$DIS_DIAB_EVER <- NULL
+```
+
+```{r}
+summary(data$PA_TOTAL_SHORT)
+```
+
+```{r}
+table(data$HS_GEN_HEALTH)
+
+### Combining levels 1 and 2 just to have enough sample. We won't do upscaling for this example
+data <- data %>%
+	mutate(gen_health = case_when(
+		HS_GEN_HEALTH == 1 ~ 0,
+		HS_GEN_HEALTH == 2 ~ 0,
+		HS_GEN_HEALTH == 3 ~ 1,
+		HS_GEN_HEALTH == 4 ~ 1,	
+		HS_GEN_HEALTH == 5 ~ 1)) %>%
+		mutate(gen_health = as.factor(gen_health))
+
+table(data$HS_GEN_HEALTH, data$gen_health)
+
+data$HS_GEN_HEALTH <- NULL
+```
+
+```{r}
+data <- data %>%
+	mutate(unemployed = case_when(
+		WRK_UNEMPLOYED == 0 ~ 0,
+		WRK_UNEMPLOYED == 1 ~ 1)) %>%
+		mutate(unemployed = as.factor(unemployed))
+
+table(data$WRK_UNEMPLOYED, data$unemployed)
+data$WRK_UNEMPLOYED <- NULL
+```
+
+## Unadjusted / Non-matched models
+
+```{r}
+table(data$diabetes, data$gen_health)
+cor(data$PA_TOTAL_SHORT, data$PM_BMI_SR)
+cor.test(data$PA_TOTAL_SHORT, data$PM_BMI_SR)
+```
+
+```{r}
+#### Epi tools method
+ghealth <- c("poor", "good")
+outc <- c("Case", "Control")
+dat <- matrix(c(3362, 34706, 842, 2272),2,2,byrow=TRUE)
+dimnames(dat) <- list("health" = ghealth, "Outcome" = outc)
+oddsratio(dat, rev="c")
+```
+```{r}
+#### Logistic regression
+lr <- glm(diabetes ~ gen_health, data = data, family = "binomial")
+
+tab_model(lr)
+```
+
+
+```{r}
+data_small <- select(data, diabetes, gen_health, SDC_AGE_CALC, SDC_EDU_LEVEL, PM_BMI_SR, WRK_FULL_TIME, SMK_CIG_EVER, SDC_INCOME, PA_TOTAL_SHORT, HS_ROUTINE_VISIT_EVER, PSE_ADULT_WRK_DURATION, DIS_RESP_SLEEP_APNEA_EVER, SDC_EDU_LEVEL_AGE, SDC_GENDER)
+baselines<-colnames(data_small)
+
+
+# covariates <- select(data, WRK_UNABLE, WRK_STUDENT, PSE_ADULT_WRK_DURATION, WH_CONTRACEPTIVES_EVER, SDC_INCOME, SDC_EDU_LEVEL_AGE, SDC_GENDER, SDC_AGE_CALC, SDC_HOUSEHOLD_ADULTS_NB, SDC_HOUSEHOLD_CHILDREN_NB)
+# baselines <- colnames(covariates)
+# baselines
+```
+
+
+```{r}
+tab_baseline <- CreateTableOne(vars = baselines,
+                       data = data_small, 
+                       strata = "gen_health", 
+                       test = FALSE, #mute P-value calculation;
+                       smd = TRUE,
+                       addOverall = TRUE)
+
+kableone(tab_baseline, smd = TRUE, showAllLevels = FALSE )
+```
+
+## Nive regression 
+
+```{r}
+fit_naive <- glm(diabetes ~ gen_health + SDC_AGE_CALC + SDC_EDU_LEVEL + PM_BMI_SR + WRK_FULL_TIME +SMK_CIG_EVER + SDC_INCOME + PA_TOTAL_SHORT + HS_ROUTINE_VISIT_EVER +PSE_ADULT_WRK_DURATION +DIS_RESP_SLEEP_APNEA_EVER+ SDC_EDU_LEVEL_AGE + SDC_GENDER, family = "binomial", data = data_small)
+
+tab_model(fit_naive)
+```
+
+
+```{r}
+# 1:1 NN PS matching w/o replacement
+kkn_1_1 <- matchit(gen_health ~ SDC_AGE_CALC + SDC_EDU_LEVEL + PM_BMI_SR + WRK_FULL_TIME +SMK_CIG_EVER + SDC_INCOME + PA_TOTAL_SHORT + HS_ROUTINE_VISIT_EVER +PSE_ADULT_WRK_DURATION +DIS_RESP_SLEEP_APNEA_EVER+ SDC_EDU_LEVEL_AGE + SDC_GENDER,
+                  data = data_small,
+                  method = "nearest",
+                  distance = "glm")
+
+summary(kkn_1_1, un = FALSE)
+
+```
+# histogram of propensity score
+
+```{r}
+knn_data <- match.data(kkn_1_1)
+ggplot(data = knn_data, aes(distance)) + 
+        geom_histogram()
+```
+
+
+# Matches
+
+```{r}
+head(kkn_1_1$match.matrix)
+```
+```{r}
+love_knn <- love.plot(kkn_1_1, 
+          binary = "std", 
+          grid = TRUE,
+          thresholds = c(m = .1),
+          colors = c("red","blue"))  
+
+plot(love_knn)
+```
+
+```{r}
+bal.plot(kkn_1_1,
+         var.name="distance",
+         which="both",
+         type = "density",
+         colors = c("red","blue"))
+```
+## full matching1
+
+```{r}
+full <- matchit(gen_health ~ SDC_AGE_CALC + SDC_EDU_LEVEL + PM_BMI_SR + WRK_FULL_TIME +SMK_CIG_EVER + SDC_INCOME + PA_TOTAL_SHORT + HS_ROUTINE_VISIT_EVER +PSE_ADULT_WRK_DURATION +DIS_RESP_SLEEP_APNEA_EVER+ SDC_EDU_LEVEL_AGE + SDC_GENDER,
+                  data = data_small,
+                  method = "quick",
+                  distance = "glm")
+full
+```
+```{r}
+summary(full, un = FALSE)
+```
+```{r}
+full_data <- match.data(full)
+```
+```{r}
+love_full <- love.plot(full, 
+                binary = "std", 
+                grid = TRUE,
+                thresholds = c(m = .1),
+                colors = c("red","blue"))
+
+plot(love_full)
+```
+
+```{r}
+plot_grid(love_full, love_knn, ncol = 1, nrow = 2, labels = c('Full', 'KNN'))
+```
+
+```{r}
+full_data$diabetes <- as.numeric(full_data$diabetes)
+full_data <- full_data %>%
+	mutate(diabetes = case_when(
+		diabetes == 1 ~ 0,
+		diabetes == 2 ~ 1)) 
+```
+
+```{r}
+fit_no_cov <- geeglm(diabetes ~ gen_health, family=binomial("log"), 
+              data=full_data,
+              weights=weights, ### Weights
+              std.err = 'san.se', ### Equivalent to robust standard errors 
+              id=subclass, #### Group by subclasses
+              corstr="independence") #### Specify correlation structure
+tab_model(fit_no_cov)
+```
+## inverse probability treatment 
+
+
+```{r}
+IPTW <- weightit(gen_health ~ SDC_AGE_CALC + SDC_EDU_LEVEL + PM_BMI_SR + WRK_FULL_TIME +SMK_CIG_EVER + SDC_INCOME + PA_TOTAL_SHORT + HS_ROUTINE_VISIT_EVER +PSE_ADULT_WRK_DURATION +DIS_RESP_SLEEP_APNEA_EVER+ SDC_EDU_LEVEL_AGE + SDC_GENDER,
+                 data = data_small,
+                 method = "glm", #using the default logistic regression;
+                 stabilize = TRUE,
+                 estimand = "ATE")
+
+IPTW
+summary(IPTW)
+```
+```{r}
+model_iptw <- glm_weightit(diabetes ~ gen_health, 
+            family = "binomial",
+            weightit = IPTW,
+            data = data_small)
+
+tab_model(model_iptw)
+```
+```{r}
+tab_model(fit_naive, fit_no_cov, model_iptw)
+```
+

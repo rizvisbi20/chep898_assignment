@@ -27,12 +27,12 @@ CHEP-898_Rizvi/
 │   ├── [Readme](https://github.com/rizvisbi20/chep898_assignment/blob/main/Independent-Analysis-1/README.md)/  
 │   ├── [Render](https://github.com/rizvisbi20/chep898_assignment/blob/main/Independent-Analysis-1/Render.md)/  
 │   ├── [independent analysis](https://github.com/rizvisbi20/chep898_assignment/blob/main/Independent-Analysis-1/Independent-Analysis-1_rizvi.md)/ 
-|── [Random Forest]()/  
-│   ├── [code]()/  
-│   ├── [output md file]()/  
-|── [Matching]()/  
-│   ├── [code]()/  
-│   ├── [output md file]()/  
+|── [Random Forest](https://github.com/rizvisbi20/chep898_assignment/tree/main/RandomForest)/  
+│   ├── [code](https://github.com/rizvisbi20/chep898_assignment/blob/main/RandomForest/RandomForest.Rmd)/  
+│   ├── [output md file](https://github.com/rizvisbi20/chep898_assignment/blob/main/RandomForest/RandomForest.md)/  
+|── [Matching](https://github.com/rizvisbi20/chep898_assignment/tree/main/Matching)/  
+│   ├── [code](https://github.com/rizvisbi20/chep898_assignment/blob/main/Matching/Matching.Rmd)/  
+│   ├── [output md file](https://github.com/rizvisbi20/chep898_assignment/blob/main/Matching/Matching.md)/  
 |── [Independent Analysis – Part 2]()/  
 │   ├── [code]()/  
 │   ├── [output md file]()/ 

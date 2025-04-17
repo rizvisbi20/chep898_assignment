@@ -33,6 +33,7 @@ library(microbenchmark)
 library(arsenal)
 library(workflows) 
 library(dials)
+library(yardstick)
 ```
 
 1. **Dataset Exploration**  
@@ -200,40 +201,40 @@ conf_mat(diabetes_results_base, truth = diabetes,
 ## Accuracy
 
 ```{r}
-accuracy_Based<-accuracy(diabetes_results_base, truth = diabetes,
+accuracy_base<-accuracy(diabetes_results_base, truth = diabetes,
          estimate = .pred_class)
-accuracy_Based
+accuracy_base
 ```
 ## Sensitivity
 
 ```{r}
-sensitivity_based<-sens(diabetes_results_base, truth = diabetes,
+sensitivity_base<-sens(diabetes_results_base, truth = diabetes,
          estimate = .pred_class)
-sensitivity_based
+sensitivity_base
 ```
 
 ## Specificity
 
 ```{r}
-specificity_based<-spec(diabetes_results_base, truth = diabetes,
+specificity_base<-spec(diabetes_results_base, truth = diabetes,
          estimate = .pred_class)
-specificity_based
+specificity_base
 ```
 
 ## F1 Score
 
 ```{r}
-f1_score_based<-f_meas(diabetes_results_base, truth = diabetes,
+f1_score_base<-f_meas(diabetes_results_base, truth = diabetes,
          estimate = .pred_class)
-f1_score_based
+f1_score_base
 ```
 #### Precision
 
 ```{r}
-precision_based  <- precision(diabetes_results_base, truth = diabetes,
+precision_base  <- precision(diabetes_results_base, truth = diabetes,
          estimate = .pred_class) 
 
-precision_based
+precision_base
 ```
 
 ## ROC Curve
@@ -357,153 +358,231 @@ rf_workflow_final <- workflow() %>%
   add_recipe(diabetes_recipe_tune) 
 ```
 
-### Training the final Model 
+
+## Fit the model 
 
 ```{r}
-rf_workflow_final_fit <- rf_workflow_final %>% 
+set.seed(100)
+
+diabetes_workflow_fit_tune <- rf_workflow_final %>% 
   fit(train_data)
 
-rf_workflow_final_fit
+diabetes_workflow_fit_tune
+summary(diabetes_workflow_fit_tune)
 ```
-
-### Prediciting test data 
-
-#### Class Prediction
-
-```{r}
-final_model_predict <- predict(rf_workflow_final_fit,new_data = test_data) %>% 
-  bind_cols(test_data)
-
-final_model_predict<- final_model_predict  %>%
-  select(.pred_class, diabetes)
-
-final_model_predict %>% 
-  head()
-```
-
-
 
 ## Test the trained model
 
 
 ```{r}
-pred_diabetes_base_class <- predict(final_model_predict,
+pred_diabetes_tune_class <- predict(diabetes_workflow_fit_tune,
                       new_data = test_data,
                       type = "class")
-table(pred_diabetes_base_class$.pred_class)
+table(pred_diabetes_tune_class$.pred_class)
 ```
 ```{r}
-pred_diabetes_base_prob <- predict(final_model_predict,
+pred_diabetes_tune_prob <- predict(diabetes_workflow_fit_tune,
                       new_data = test_data,
                       type = "prob")
-head(pred_diabetes_base_prob)
+head(pred_diabetes_tune_prob)
 ```
 ```{r}
-diabetes_results_base <- test_data %>%
+diabetes_results_tune <- test_data %>%
   select(diabetes) %>%
-  bind_cols(pred_diabetes_base_class, pred_diabetes_base_prob)
+  bind_cols(pred_diabetes_tune_class, pred_diabetes_tune_prob)
 
-head(diabetes_results_base)
+head(diabetes_results_tune)
 ```
    - Evaluate the model using appropriate metrics (e.g., accuracy, precision, recall, F1-score, or ROC-AUC).  
    
 ## Confusion Matrix
 ```{r}
-conf_mat(final_model_predict, truth = diabetes,
+conf_mat(diabetes_results_tune, truth = diabetes,
          estimate = .pred_class)
 ```
 ## Accuracy
 
 ```{r}
-accuracy_tuned<-accuracy(final_model_predict, truth = diabetes,
+accuracy_tune<-accuracy(diabetes_results_tune, truth = diabetes,
          estimate = .pred_class)
-accuracy_tuned
+accuracy_tune
 ```
 ## Sensitivity
 
 ```{r}
-sensitivity_tuned<-sens(final_model_predict, truth = diabetes,
+sensitivity_tune<-sens(diabetes_results_tune, truth = diabetes,
          estimate = .pred_class)
-sensitivity_tuned
+sensitivity_tune
 ```
 
 ## Specificity
 
 ```{r}
-specificity_tuned<-spec(final_model_predict, truth = diabetes,
+specificity_tune<-spec(diabetes_results_tune, truth = diabetes,
          estimate = .pred_class)
-specificity_tuned
+specificity_tune
 ```
 
 ## F1 Score
 
 ```{r}
-f1_score_tuned<-f_meas(final_model_predict, truth = diabetes,
+f1_score_tune<-f_meas(diabetes_results_tune, truth = diabetes,
          estimate = .pred_class)
-f1_score_tuned
+f1_score_tune
 ```
 #### Precision
 
 ```{r}
-precision_tuned  <- precision(final_model_predict, truth = diabetes,
+precision_tune  <- precision(diabetes_results_tune, truth = diabetes,
          estimate = .pred_class) 
 
-precision_tuned
+precision_tune
 ```
-#### Combine metrics into a data frame
-
-```{r}
-tuned_metrics <- data.frame(
-  accuracy_tuned = accuracy_tuned$.estimate,
-  sensitivity_tuned = sensitivity_tuned$.estimate,
-  specificity_tuned = specificity_tuned$.estimate,
-  precision_tuned= precision_tuned$.estimate,
-  f_score_tuned = f1_score_tuned$.estimate
-)
-
-tuned_metrics %>% 
-  head()
-```
-
-#### Changing shape of dataframe 
-
-```{r}
-tuned_metrics_long <- tuned_metrics %>% 
-  pivot_longer(cols = accuracy_tuned:f_score_tuned,
-               names_to = "metrics",
-               values_to = "estimates")
-
-tuned_metrics_long
-```
-
-
-
 
 ## ROC Curve
 
 ```{r}
-roc_auc(final_model_predict,
+roc_auc(diabetes_results_tune,
         truth = diabetes,
-        .pred_class)
+        .pred_0)
 
-roc_curve <- final_model_predict %>%
-  roc_curve(truth = diabetes, .pred_class) %>%
+roc_curve_tune <- diabetes_results_tune %>%
+  roc_curve(truth = diabetes, .pred_0) %>%
   autoplot()
 
-plot(roc_curve)
+plot(roc_curve_tune)
+```
+The ROC-AUC score of 0.7534607 indicates that the model has moderate to good discriminative ability in distinguishing between positive and negative cases. It has a 75.34% chance of correctly ranking a positive instance higher than a negative one.
+
+### **Model Comparisons**  
+
+#### Combine metrics into a data frame
+
+```{r}
+tune_metrics <- data.frame(
+  variable=c("accuracy_tune","sensitivity_tune", "specificity_tune", "precision_tune","f_score_tune"),
+  estimate = c(accuracy_tune$.estimate,sensitivity_tune$.estimate,specificity_tune$.estimate,
+               precision_tune$.estimate,f1_score_tune$.estimate))
+
+tune_metrics %>% 
+  head()
+```
+```{r}
+base_metrics <- data.frame(
+  variable=c("accuracy_base","sensitivity_base", "specificity_base", "precision_base","f_score_base"),
+  estimate = c(accuracy_base$.estimate,sensitivity_base$.estimate,specificity_base$.estimate,
+               precision_base$.estimate,f1_score_base$.estimate))
+
+base_metrics %>% 
+  head()
+```
+```{r}
+metrics_combined <- bind_rows(tune_metrics, base_metrics)
+
+metrics_combined %>% 
+  glimpse()
+metrics_combined
+```
+### Compare the ROC curve 
+
+```{r}
+roc_base <- diabetes_results_base %>%
+  roc_curve(truth = diabetes, .pred_0) %>%
+  mutate(Model = "Base Model")
+
+roc_tune <- diabetes_results_tune %>%
+  roc_curve(truth = diabetes, .pred_0) %>%
+  mutate(Model = "Tuned Model")
+combined_roc <- bind_rows(roc_base, roc_tune)
+```
+
+```{r}
+# Create the plot
+combined_plot <- ggplot(combined_roc, aes(x = 1 - specificity, y = sensitivity, color = Model)) +
+  geom_path(linewidth = 1) +
+  geom_abline(lty = 3, color = "gray") +
+  labs(title = "ROC Curve Comparison",
+       x = "1 - Specificity (False Positive Rate)",
+       y = "Sensitivity (True Positive Rate)") +
+  theme_minimal() +
+  scale_color_manual(values = c("#E69F00", "#56B4E9")) + # Optional custom colors
+  coord_equal()
+```
+
+```{r}
+print(combined_plot)
 ```
 
 
+### Accuracy Comparison
+
+```{r}
+accuracy_compare <- metrics_combined %>% 
+  filter(variable %in% c("accuracy_base", "accuracy_tune"))
+accuracy_compare
+```
+
+#### Visualizing accuracy comparison 
+```{r, fig.width=10, fig.height= 3}
+ggplot(data = accuracy_compare, aes(x = variable, y = estimate))+
+  geom_segment(aes(x = variable, xend = variable, yend = estimate, y = 0))+
+  geom_point(size = 4, colour = "#a13")+
+  geom_text(aes(label = round(estimate, 2)), hjust = -0.2, vjust = 0.5, color = "black")+
+  coord_flip()
+```
+### sensitivity Comparison
+
+```{r}
+sensitivity_compare <- metrics_combined %>% 
+  filter(variable %in% c("sensitivity_tune", "sensitivity_base"))
+sensitivity_compare
+```
+
+#### Visualizing sensitivity comparison
+
+```{r, fig.width=10, fig.height= 3}
+ggplot(data = sensitivity_compare, aes(x = variable, y = estimate))+
+  geom_segment(aes(x = variable, xend = variable, yend = estimate, y = 0))+
+  geom_point(size = 4, colour = "#a13")+
+  geom_text(aes(label = round(estimate, 2)), hjust = -0.2, vjust = 0.5, color = "black")+
+  coord_flip()
+```
 
 
-4. **Model Comparisons**  
-   - Compare the tuned Random Forest model against:  
-     - The baseline Random Forest model.  
-   - Analyze differences in performance using quantitative metrics and discuss possible reasons for the results.  
+### Precision Comparison
 
-5. **Feature Importance Analysis**  
-   - Extract and interpret feature importance scores from the Random Forest model.  
-   - Visualize the top contributing features and discuss their relevance to the dataset.  
-   
-   
-   
+```{r}
+precision_compare <- metrics_combined %>% 
+  filter(variable %in% c("precision_tune", "precision_base"))
+precision_compare
+```
+
+#### Visualizing precision comparison
+
+```{r, fig.width=10, fig.height= 3}
+ggplot(data = precision_compare, aes(x = variable, y = estimate))+
+  geom_segment(aes(x = variable, xend = variable, yend = estimate, y = 0))+
+  geom_point(size = 4, colour = "#a13")+
+  geom_text(aes(label = round(estimate, 2)), hjust = -0.2, vjust = 0.5, color = "black")+
+  coord_flip()
+```
+**Performance Analysis**
+
+1.	Contrary to typical expectations, the base model slightly outperforms the tuned model across all metrics.
+
+2.	The small differences (all < 0.005) suggest negligible practical significance.
+
+3.	Both models achieve excellent sensitivity (~98%) but very poor specificity (~10.6-11%). This indicates both models are excellent at identifying positive cases but perform poorly at identifying negatives.
+
+4.	The high precision (~93%) suggests false positives are relatively rare when predictions are positive.
+
+**Potential Reasons for Results**
+
+1.	The extremely high sensitivity with low specificity suggests a severe class imbalance.
+
+2.	Both models may be biased toward predicting the majority class.
+
+3.	The tuning process may have failed to find better parameters.
+
+4.	The search space might have been too narrow or improperly defined.
+

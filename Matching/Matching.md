@@ -44,15 +44,6 @@ data <- data %>% mutate_at(83:93, factor)
 ```
 
 
-``` r
-summary(data$PM_BMI_SR)
-```
-
-```
-##    Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
-##    8.86   23.41   26.62   27.66   30.68   69.40
-```
-
 
 ``` r
 data <- data %>%
@@ -78,15 +69,6 @@ table(data$DIS_DIAB_EVER, data$diabetes)
 data$DIS_DIAB_EVER <- NULL
 ```
 
-
-``` r
-summary(data$PA_TOTAL_SHORT)
-```
-
-```
-##    Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
-##       0     600    1800    2606    3795   19278
-```
 
 
 ``` r
@@ -128,27 +110,6 @@ data$HS_GEN_HEALTH <- NULL
 ```
 
 
-``` r
-data <- data %>%
-	mutate(unemployed = case_when(
-		WRK_UNEMPLOYED == 0 ~ 0,
-		WRK_UNEMPLOYED == 1 ~ 1)) %>%
-		mutate(unemployed = as.factor(unemployed))
-
-table(data$WRK_UNEMPLOYED, data$unemployed)
-```
-
-```
-##    
-##         0     1
-##   0 39100     0
-##   1     0  2087
-```
-
-``` r
-data$WRK_UNEMPLOYED <- NULL
-```
-
 ## Unadjusted / Non-matched models
 
 
@@ -161,32 +122,6 @@ table(data$diabetes, data$gen_health)
 ##         0     1
 ##   0  3367 34706
 ##   1   842  2272
-```
-
-``` r
-cor(data$PA_TOTAL_SHORT, data$PM_BMI_SR)
-```
-
-```
-## [1] -0.04513782
-```
-
-``` r
-cor.test(data$PA_TOTAL_SHORT, data$PM_BMI_SR)
-```
-
-```
-## 
-## 	Pearson's product-moment correlation
-## 
-## data:  data$PA_TOTAL_SHORT and data$PM_BMI_SR
-## t = -9.1697, df = 41185, p-value < 2.2e-16
-## alternative hypothesis: true correlation is not equal to 0
-## 95 percent confidence interval:
-##  -0.05477157 -0.03549567
-## sample estimates:
-##         cor 
-## -0.04513782
 ```
 
 
@@ -271,7 +206,7 @@ tab_model(lr)
 </tr>
 
 </table>
-
+The unadjusted logistic regression suggested that Health person 74% less likely to have diabetes compared to poor health condition. 
 
 
 ``` r
@@ -652,7 +587,7 @@ ggplot(data = knn_data, aes(distance)) +
 ## `stat_bin()` using `bins = 30`. Pick better value with `binwidth`.
 ```
 
-![](Matching_files/figure-html/unnamed-chunk-16-1.png)<!-- -->
+![](Matching_files/figure-html/unnamed-chunk-13-1.png)<!-- -->
 
 
 # Matches
@@ -682,7 +617,7 @@ love_knn <- love.plot(kkn_1_1,
 plot(love_knn)
 ```
 
-![](Matching_files/figure-html/unnamed-chunk-18-1.png)<!-- -->
+![](Matching_files/figure-html/unnamed-chunk-15-1.png)<!-- -->
 
 
 ``` r
@@ -693,7 +628,7 @@ bal.plot(kkn_1_1,
          colors = c("red","blue"))
 ```
 
-![](Matching_files/figure-html/unnamed-chunk-19-1.png)<!-- -->
+![](Matching_files/figure-html/unnamed-chunk-16-1.png)<!-- -->
 ## full matching1
 
 
@@ -821,14 +756,17 @@ love_full <- love.plot(full,
 plot(love_full)
 ```
 
-![](Matching_files/figure-html/unnamed-chunk-23-1.png)<!-- -->
+![](Matching_files/figure-html/unnamed-chunk-20-1.png)<!-- -->
 
 
 ``` r
 plot_grid(love_full, love_knn, ncol = 1, nrow = 2, labels = c('Full', 'KNN'))
 ```
 
-![](Matching_files/figure-html/unnamed-chunk-24-1.png)<!-- -->
+![](Matching_files/figure-html/unnamed-chunk-21-1.png)<!-- -->
+
+The covariate balance plot demonstrates that full matching successfully achieved equilibrium between groups, with post-matching standardized mean differences (SMDs) converging near zero across all variables—a marked improvement over the pre-matching imbalances (peak SMDs ≈ ±0.5). This indicates the matched cohorts attained comparability on observed confounders, strengthening the validity of subsequent effect estimates. While the results suggest robust handling of measured covariates, residual bias from unobserved variables remains possible. The tight clustering of SMDs around zero post-adjustment underscores the efficacy of full matching in mitigating selection bias for this analysis.
+
 
 
 ``` r
@@ -1376,4 +1314,4 @@ tab_model(fit_naive, fit_no_cov, model_iptw)
 </tr>
 
 </table>
-
+In the adjusted model, the odds ratio (OR) for general health was 0.32, while in full matching, it was 0.34, and in inverse probability treatment weighting (IPTW), it was 0.30. This indicates that, regardless of the analytical method used, better general health was consistently associated with a ~66–70% lower odds of diabetes (since ORs ≈ 0.30–0.34). The minor variations suggest the association's robustness across different matching approaches.

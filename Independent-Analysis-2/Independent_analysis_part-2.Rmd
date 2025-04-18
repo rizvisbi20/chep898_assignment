@@ -1,0 +1,433 @@
+---
+title: "Independent Analysis"
+author: "Syed Jafar Raza Rizvi <br> NSID: cfr954 <br> Student ID: 11344782"
+output:
+  html_document:
+    keep_md: true
+date: "2025-02-11"
+---
+
+```{r setup, message = FALSE, warning = FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(tidymodels)
+library(sjPlot)
+library(finalfit)
+library(knitr)
+library(gtsummary)
+library(mlbench)
+library(kernlab)
+library(vip)
+library(rsample)
+library(tune)
+library(recipes)
+library(yardstick)
+library(parsnip)
+library(glmnet)
+library(themis)
+library(microbenchmark)
+library(naniar)
+```
+
+We are using the imputed (ie. no missing data) version of the synthetic cohort of patients who have no prior history of AF and had a baseline ECG performed between January 2010 and January 2023 , followed by a minimum follow-up of 12 months. 
+
+### Research Questions:
+Development and Validation of a New-Onset Atrial Fibrillation Prediction Model?
+
+In this study, we utilized a comprehensive dataset comprising 12-lead electrocardiogram (ECG) measurements, laboratory results, medical history, and demographic variables. Missing data were observed in the laboratory variables, which were addressed using Multiple Imputation by Chained Equations (MICE), a robust statistical method for handling missing values. The imputation process was conducted with 20 imputations and 5 iterations to ensure convergence and stability of the estimates. This approach preserves statistical power and reduces bias while accounting for the uncertainty inherent in missing data.
+
+## Reading data 
+```{r}
+data_synt1 <- read_csv("data_synt1_mice.csv")
+```
+
+```{r}
+get_unique_values <- function(df, vars_to_exclude = NULL) {
+  # Initialize results dataframe
+  result <- data.frame(
+    Variable_Name = character(),
+    Unique_Values = character(),
+    Is_Boolean = logical(),
+    # Value_Count = integer(),
+    stringsAsFactors = FALSE
+  )
+  
+  # Get columns to analyze (excluding specified vars)
+  cols_to_analyze <- setdiff(names(df), vars_to_exclude)
+  
+  for (col in cols_to_analyze) {
+    # Get complete unique values (including NA)
+    unique_vals <- unique(df[[col]])
+    na_present <- any(is.na(unique_vals))
+    na_sum<-sum(is.na(df[[col]]))
+    na_sum_per<-((sum(is.na(df[[col]])))/length(df[[col]]))*100
+    
+    # Remove NA for boolean detection
+    clean_vals <- unique_vals[!is.na(unique_vals)]
+    val_count <- length(clean_vals)
+    
+    # Detect boolean variables (0/1 or 1/2 numeric)
+    is_boolean <- if (val_count <= 2 && is.numeric(df[[col]])) {
+      all(clean_vals %in% c(0, 1)) || all(clean_vals %in% c(1, 2))
+    } else {
+      FALSE
+    }
+    
+    # Prepare values for display
+    if (na_present) {
+      display_vals <- c(sort(clean_vals), NA)
+    } else {
+      display_vals <- sort(clean_vals)
+    }
+    
+    # Convert to character representation
+    char_vals <- sapply(display_vals, function(x) {
+      if (is.na(x)) "NA" else as.character(x)
+    })
+    
+    result <- rbind(result, data.frame(
+      Variable_Name = col,
+      Unique_Values = paste(char_vals, collapse = ", "),
+      Is_Boolean = is_boolean,
+      Value_Count = val_count,
+      missing=na_sum,
+      missing_per=na_sum_per,
+      stringsAsFactors = FALSE
+    ))
+  }
+  
+  return(result)
+}
+unique_values <- get_unique_values(data_synt1)
+table(unique_values$Is_Boolean)
+ 
+unique_values<- unique_values %>%
+  filter(Variable_Name!="patient_id")
+unique_values1<- unique_values %>%
+  filter(Value_Count==1)
+print(unique_values1$Variable_Name)
+```
+those variable have only outcome. so we are going to drop those variables.
+
+```{r}
+data_synt1 <- data_synt1 %>% 
+  select(-any_of(unique_values1$Variable_Name))
+```
+
+for this analysis we only consider the ECG variable which are 
+
+Heart rate from index 12 lead ECG [ecg_resting_hr]
+PR interval duration from index 12 lead ECG [ecg_resting_pr]
+QRS complex duration from index 12 lead ECG [ecg_resting_qrs]
+Corrected QT interval  from index 12 lead ECG [ecg_resting_qtc]
+Atrial fibrillation in index 12 lead ECG [ecg_resting_afib]
+Paced rhythm in index 12 lead ECG [ecg_resting_paced]
+Bigeminy in index 12 lead ECG [ecg_resting_bigeminy]
+Left bundle branch block in index 12 lead ECG [ecg_resting_LBBB]
+Right bundle branch block in index 12 lead ECG [ecg_resting_RBBB]
+Incomplete left bundle branch block in index 12 lead ECG [ecg_resting_incomplete_LBBB]
+Incomplete right bundle branch block in index 12 lead ECG [ecg_resting_incomplete_RBBB]
+Left anterior fascicular block in index 12 lead ECG [ecg_resting_LAFB]
+Left posterior fascicular block in index 12 lead ECG [ecg_resting_LPFB]
+Bifascicular block in index 12 lead ECG [ecg_resting_bifascicular_block]
+Trifascicular block in index 12 lead ECG [ecg_resting_trifascicular_block]
+Intra-ventricular conduction delay in  index 12 lead ECG [ecg_resting_intraventricular_conduction_delay]
+Chronological age at time of referenced index ECG, rounded down to nearest whole number [demographics_age_index_ecg]
+Sex assigned at birth [demographics_birth_sex]
+ICD-10 coding of hypertension in either DAD or NACRS databases at any time prior to or 6 months after date of index 12 lead ECG [hypertension_icd10]
+Documented presence of hyperglycaemic state inclusive of Type 1 diabetes, Type 2 diabetes, Pre-diabetes, or Impaired fasting glucose (treated or untreated) by any of: labs, medications, or ICD-10,  at any time prior to or 6 months after date of index 12 lead ECG [diabetes_combined]
+Documented presence of dyslipidemia (treated or untreated) by any of: labs, medications, or ICD-10,  at any time prior to or 6 months after date of index 12 lead ECG [dyslipidemia_combined]
+ICD-10 coded presence of dilated cardiomyopathy at any time prior to or 6 months after date of index 12 lead ECG [dcm_icd10]
+ICD-10 coded presence of hypertrophic cardiomyopathy at any time prior to or 6 months after date of index 12 lead ECG [hcm_icd10]
+ICD-10 coded presence of acute myocarditis at any time prior to date of index 12 lead ECG [myocarditis_icd10_prior]
+ICD-10 coded presence of acute pericarditis at any time prior todate of index 12 lead ECG [pericarditis_icd10_prior]
+ICD-10 coded presence of aortic dilatation/aneurysm at any time prior to or 6 months after date of index 12 lead ECG [aortic_aneurysm_icd10]
+ICD-10 coded presence of aortic dissection at any time prior to date of index 12 lead ECG [aortic_dissection_icd10_prior]
+ICD-10 coded presence of pulmonary hypertension at any time prior to or 6 months after date of index 12 lead ECG [pulmonary_htn_icd10]
+ICD-10 coded presence of amyloidosis at any time prior to or 6 months after date of index 12 lead ECG [amyloid_icd10]
+ICD-10 coded presence of chronic obstructive airway disease (COPD) at any time prior to or 6 months after date of index 12 lead ECG [copd_icd10]
+ICD-10 coded presence of hyperthyroidism at any time prior to or 6 months after date of index 12 lead ECG [hyperthyroid_icd10]
+ICD-10 coded presence of hypothyroidism at any time prior to or 6 months after date of index 12 lead ECG [hypothyroid_icd10]
+ICD-10 coded presence of rheumatoid arthritis at any time prior to or 6 months after date of index 12 lead ECG [rheumatoid_arthritis_icd10]
+ICD-10 coded presence of systemic lupus erythematosus (SLE) at any time prior to or 6 months after date of index 12 lead ECG [sle_icd10]
+ICD-10 coded presence of sarcoidosis at any time prior to or 6 months after date of index 12 lead ECG [sarcoid_icd10]
+ICD-10 coded presence of cancer at any time prior to or 6 months after date of index 12 lead ECG [cancer_any_icd10]
+
+```{r}
+data_synt1 <- data_synt1 %>%
+  dplyr::select(ecg_resting_hr,
+ecg_resting_pr,
+ecg_resting_qrs,
+ecg_resting_qtc,
+ecg_resting_paced,
+ecg_resting_bigeminy,
+ecg_resting_LBBB,
+ecg_resting_RBBB,
+ecg_resting_incomplete_LBBB,
+ecg_resting_incomplete_RBBB,
+ecg_resting_LAFB,
+ecg_resting_LPFB,
+ecg_resting_bifascicular_block,
+ecg_resting_trifascicular_block,
+ecg_resting_intraventricular_conduction_delay,
+outcome_afib_aflutter_new_post,
+demographics_age_index_ecg,
+demographics_birth_sex,
+hypertension_icd10,
+diabetes_combined,
+dyslipidemia_combined,
+dcm_icd10,
+hcm_icd10,
+myocarditis_icd10_prior,
+pericarditis_icd10_prior,
+aortic_aneurysm_icd10,
+aortic_dissection_icd10_prior,
+pulmonary_htn_icd10,
+amyloid_icd10,
+copd_icd10,
+hyperthyroid_icd10,
+hypothyroid_icd10,
+rheumatoid_arthritis_icd10,
+sle_icd10,
+sarcoid_icd10,
+cancer_any_icd10)
+```
+
+**Missing Data Information**
+
+```{r}
+missing_table <- miss_var_summary(data_synt1)
+missing_table
+```
+
+```{r}
+factor_vars <- unique_values %>% 
+  filter(Is_Boolean== TRUE) %>% 
+  pull(Variable_Name)
+data_synt1 <- data_synt1 %>% 
+  mutate(across(any_of(factor_vars), as.factor))
+data_synt1$patient_id<-NULL
+```
+
+```{r}
+table(data_synt1$outcome_afib_aflutter_new_post)
+```
+
+### Prepare the data split and cross validation folds
+
+```{r}
+set.seed(10)
+
+#### Cross Validation Split
+cv_split <- initial_validation_split(data_synt1, 
+                            strata = outcome_afib_aflutter_new_post, 
+                            prop = c(0.70, 0.20))
+
+# Create data frames for the two sets:
+train_data <- training(cv_split)
+table(train_data$outcome_afib_aflutter_new_post)
+```
+```{r}
+test_data  <- testing(cv_split)
+table(test_data$outcome_afib_aflutter_new_post)
+```
+### V folds
+
+```{r}
+folds <- vfold_cv(training(cv_split), v = 5, strata = outcome_afib_aflutter_new_post)
+```
+
+
+
+```{r}
+all_recipe <- 
+  recipe(outcome_afib_aflutter_new_post ~ ., data = train_data) %>%
+  step_smotenc(outcome_afib_aflutter_new_post, over_ratio = 0.9) %>%
+  step_dummy(all_nominal_predictors()) %>%
+  step_zv(all_predictors(), -all_outcomes()) %>%
+  step_normalize(all_numeric_predictors())
+```
+
+### logistic regression 
+
+```{r}
+logistic_model <- logistic_reg(penalty = tune(), mixture = tune(),
+                                mode = "classification",
+                                engine = "glmnet"
+                               )
+
+logistic_workflow <- workflow() %>% 
+          add_model(logistic_model) %>% 
+          add_recipe(all_recipe) %>% 
+          tune_grid(resamples = folds,
+                    control = control_grid(save_pred = TRUE, 
+                                            verbose = FALSE)) ## Edit for running live
+
+collect_metrics(logistic_workflow) 
+```
+
+
+```{r}
+show_best(logistic_workflow, metric='accuracy', n=5)  # only show the results for the best 5 models
+```
+```{r}
+autoplot(logistic_workflow, metric = 'accuracy') 
+```
+### Random Forest 
+
+```{r}
+cores <- parallel::detectCores()
+cores
+```
+
+```{r}
+rf_model <- rand_forest(mtry = tune(), min_n = tune(), trees = tune()) %>% 
+              set_engine("ranger", num.threads = cores) %>% 
+              set_mode("classification")
+
+rf_workflow <- workflow() %>% 
+          add_model(rf_model) %>% 
+          add_recipe(all_recipe) %>% 
+          tune_grid(resamples = folds,
+                    control = control_grid(save_pred = TRUE, 
+                                            verbose = FALSE)) ## Edit for running live
+```
+
+```{r}
+collect_metrics(rf_workflow) 
+```
+
+```{r}
+show_best(rf_workflow, metric='accuracy', n=5)  # only show the results for the best 5 models
+```
+
+```{r}
+autoplot(rf_workflow, metric = 'accuracy') 
+```
+
+#### Support Vector Machine
+
+```{r}
+svm_model <- svm_rbf(cost = tune(), rbf_sigma = tune()) %>% 
+  set_mode("classification") %>%
+  set_engine("kernlab")
+
+svm_workflow <- workflow() %>% 
+          add_model(svm_model) %>% 
+          add_recipe(all_recipe) %>% 
+          tune_grid(resamples = folds,
+                    control = control_grid(save_pred = FALSE, 
+                                            verbose = FALSE)) ## Edit for running live
+```
+
+```{r}
+collect_metrics(svm_workflow) 
+```
+
+```{r}
+show_best(svm_workflow, metric='accuracy', n=5)  # only show the results for the best 5 models
+```
+
+```{r}
+autoplot(svm_workflow, metric = 'accuracy') 
+```
+
+### Best Model 
+
+## logistic Regression
+
+```{r}
+logistic_best <- 
+  logistic_workflow %>% 
+  select_best(metric = "brier_class")
+
+logistic_final_model <- finalize_model(
+                          logistic_model,
+                          logistic_best
+                          )
+logistic_final_model
+```
+
+```{r}
+final_logistic_workflow <- workflow() %>%
+                      add_recipe(all_recipe) %>%
+                      add_model(logistic_final_model)
+
+final_logistic_results <- final_logistic_workflow %>%
+                    last_fit(cv_split)
+
+lr_results <- final_logistic_results %>% collect_metrics()
+```
+
+
+## Random Forest
+
+```{r}
+rf_best <- 
+  rf_workflow %>% 
+  select_best(metric = "brier_class")
+
+rf_final_model <- finalize_model(
+                          rf_model,
+                          rf_best
+                          )
+rf_final_model
+```
+
+```{r}
+final_rf_workflow <- workflow() %>%
+                      add_recipe(all_recipe) %>%
+                      add_model(rf_final_model)
+
+final_rf_results <- final_rf_workflow %>%
+                    last_fit(cv_split)
+
+rf_results <- final_rf_results %>% collect_metrics()
+```
+
+## Support Vector Machine
+
+```{r}
+svm_best <- 
+  svm_workflow %>% 
+  select_best(metric = "brier_class")
+
+svm_final_model <- finalize_model(
+                          svm_model,
+                          svm_best
+                          )
+svm_final_model
+```
+
+```{r}
+final_svm_workflow <- workflow() %>%
+                      add_recipe(all_recipe) %>%
+                      add_model(svm_final_model)
+
+final_svm_results <- final_svm_workflow %>%
+                      last_fit(cv_split)
+
+svm_results <- final_svm_results %>% collect_metrics()
+```
+
+### Final Resul
+
+## Logistic Regression 
+
+```{r}
+kable(lr_results)
+```
+
+## Random Forest 
+
+```{r}
+kable(rf_results)
+```
+
+## SVM 
+
+```{r}
+kable(svm_results)
+```
+
+

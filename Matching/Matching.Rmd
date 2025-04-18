@@ -40,9 +40,6 @@ data <- data %>% mutate_at(15:81, factor)
 data <- data %>% mutate_at(83:93, factor)
 ```
 
-```{r}
-summary(data$PM_BMI_SR)
-```
 
 ```{r}
 data <- data %>%
@@ -59,9 +56,6 @@ table(data$DIS_DIAB_EVER, data$diabetes)
 data$DIS_DIAB_EVER <- NULL
 ```
 
-```{r}
-summary(data$PA_TOTAL_SHORT)
-```
 
 ```{r}
 table(data$HS_GEN_HEALTH)
@@ -81,23 +75,11 @@ table(data$HS_GEN_HEALTH, data$gen_health)
 data$HS_GEN_HEALTH <- NULL
 ```
 
-```{r}
-data <- data %>%
-	mutate(unemployed = case_when(
-		WRK_UNEMPLOYED == 0 ~ 0,
-		WRK_UNEMPLOYED == 1 ~ 1)) %>%
-		mutate(unemployed = as.factor(unemployed))
-
-table(data$WRK_UNEMPLOYED, data$unemployed)
-data$WRK_UNEMPLOYED <- NULL
-```
 
 ## Unadjusted / Non-matched models
 
 ```{r}
 table(data$diabetes, data$gen_health)
-cor(data$PA_TOTAL_SHORT, data$PM_BMI_SR)
-cor.test(data$PA_TOTAL_SHORT, data$PM_BMI_SR)
 ```
 
 ```{r}
@@ -114,7 +96,7 @@ lr <- glm(diabetes ~ gen_health, data = data, family = "binomial")
 
 tab_model(lr)
 ```
-
+The unadjusted logistic regression suggested that Health person 74% less likely to have diabetes compared to poor health condition. 
 
 ```{r}
 data_small <- select(data, diabetes, gen_health, SDC_AGE_CALC, SDC_EDU_LEVEL, PM_BMI_SR, WRK_FULL_TIME, SMK_CIG_EVER, SDC_INCOME, PA_TOTAL_SHORT, HS_ROUTINE_VISIT_EVER, PSE_ADULT_WRK_DURATION, DIS_RESP_SLEEP_APNEA_EVER, SDC_EDU_LEVEL_AGE, SDC_GENDER)
@@ -217,6 +199,9 @@ plot(love_full)
 plot_grid(love_full, love_knn, ncol = 1, nrow = 2, labels = c('Full', 'KNN'))
 ```
 
+The covariate balance plot demonstrates that full matching successfully achieved equilibrium between groups, with post-matching standardized mean differences (SMDs) converging near zero across all variables—a marked improvement over the pre-matching imbalances (peak SMDs ≈ ±0.5). This indicates the matched cohorts attained comparability on observed confounders, strengthening the validity of subsequent effect estimates. While the results suggest robust handling of measured covariates, residual bias from unobserved variables remains possible. The tight clustering of SMDs around zero post-adjustment underscores the efficacy of full matching in mitigating selection bias for this analysis.
+
+
 ```{r}
 full_data$diabetes <- as.numeric(full_data$diabetes)
 full_data <- full_data %>%
@@ -258,4 +243,4 @@ tab_model(model_iptw)
 ```{r}
 tab_model(fit_naive, fit_no_cov, model_iptw)
 ```
-
+In the adjusted model, the odds ratio (OR) for general health was 0.32, while in full matching, it was 0.34, and in inverse probability treatment weighting (IPTW), it was 0.30. This indicates that, regardless of the analytical method used, better general health was consistently associated with a ~66–70% lower odds of diabetes (since ORs ≈ 0.30–0.34). The minor variations suggest the association's robustness across different matching approaches.

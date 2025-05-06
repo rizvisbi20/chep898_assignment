@@ -35,7 +35,7 @@ CHEP-898_Rizvi/
 │   ├── [output md file](https://github.com/rizvisbi20/chep898_assignment/blob/main/Matching/Matching.md)/  
 |── [Independent Analysis – Part 2](https://github.com/rizvisbi20/chep898_assignment/tree/main/Independent-Analysis-2)/  
 │   ├── [code](https://github.com/rizvisbi20/chep898_assignment/blob/main/Independent-Analysis-2/Independent_analysis_part-2.Rmd)/  
-│   ├── [output md file]()/ 
+│   ├── [output md file](https://github.com/rizvisbi20/chep898_assignment/blob/main/Independent-Analysis-2/Independent_analysis_part-2.md)/ 
 
 
 For questions or issues, please contact:

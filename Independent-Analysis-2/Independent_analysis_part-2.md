@@ -625,6 +625,8 @@ kable(rf_results)
 |roc_auc     |binary     | 0.9696015|Preprocessor1_Model1 |
 |brier_class |binary     | 0.0320880|Preprocessor1_Model1 |
 
+Comment: The accuracy of the random forest model is 0.95, which is higher than the logistic model, which is 0.91. However, the area of the ROC curve is a bit higher for the random forest model (0.97) than the logistic model (0.96)
+
 <!-- ## SVM  -->
 
 <!-- ```{r} -->
